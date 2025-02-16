@@ -102,7 +102,7 @@ export const carResolvers = {
       },
       context: Context
     ): Promise<Car> => {
-      handleAuthorization(context.user, "ADMIN"); // Only admins can add cars
+      handleAuthorization(context.user ?? { role: "" }, "ADMIN"); // Only admins can add cars
 
       return prisma.car.create({ data: args });
     },
@@ -112,7 +112,7 @@ export const carResolvers = {
       { id, ...updates }: { id: string; make?: string; model?: string; year?: number; price?: number; availability?: boolean },
       context: Context
     ): Promise<Car> => {
-      handleAuthorization(context.user, "ADMIN"); // Only admins can update cars
+      handleAuthorization(context.user ?? { role: "" }, "ADMIN"); // Only admins can update cars
 
       const existingCar = await prisma.car.findUnique({ where: { id } });
       if (!existingCar) throw new Error("Car not found");
@@ -131,7 +131,7 @@ export const carResolvers = {
       { id }: { id: string },
       context: Context
     ): Promise<Car> => {
-      handleAuthorization(context.user, "ADMIN"); // Only admins can delete cars
+      handleAuthorization(context.user ?? { role: "" }, "ADMIN"); // Only admins can delete cars
 
       const existingCar = await prisma.car.findUnique({ where: { id } });
       if (!existingCar) throw new Error("Car not found");

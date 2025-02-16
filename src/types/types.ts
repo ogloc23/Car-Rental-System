@@ -1,8 +1,8 @@
 import { PrismaClient } from "@prisma/client";
-import { Request } from "express";
+import express from "express";
 
 export interface Context {
-  req: Request; // Ensure request object exists
-  user?: { id: string; role: string }; // Optional user object
+  req: express.Request;
+  user?: { id: string; role: string };
   prisma: PrismaClient;
 }

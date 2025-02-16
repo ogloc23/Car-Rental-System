@@ -77,11 +77,11 @@ export const carResolvers = {
     },
     Mutation: {
         addCar: async (_parent, args, context) => {
-            handleAuthorization(context.user, "ADMIN"); // Only admins can add cars
+            handleAuthorization(context.user ?? { role: "" }, "ADMIN"); // Only admins can add cars
             return prisma.car.create({ data: args });
         },
         updateCar: async (_parent, { id, ...updates }, context) => {
-            handleAuthorization(context.user, "ADMIN"); // Only admins can update cars
+            handleAuthorization(context.user ?? { role: "" }, "ADMIN"); // Only admins can update cars
             const existingCar = await prisma.car.findUnique({ where: { id } });
             if (!existingCar)
                 throw new Error("Car not found");
@@ -94,7 +94,7 @@ export const carResolvers = {
             });
         },
         deleteCar: async (_parent, { id }, context) => {
-            handleAuthorization(context.user, "ADMIN"); // Only admins can delete cars
+            handleAuthorization(context.user ?? { role: "" }, "ADMIN"); // Only admins can delete cars
             const existingCar = await prisma.car.findUnique({ where: { id } });
             if (!existingCar)
                 throw new Error("Car not found");

@@ -1,5 +1,5 @@
-import { authMiddleware } from "../../middleware/authMiddleware.js";
-import { Context } from "../../types/types.js";
+import { authMiddleware } from "../middleware/authMiddleware.js";
+import { Context } from "../types/types.js";
 
 export const adminMiddleware = async (context: Context) => {
   await authMiddleware(context); // Ensure the user is authenticated

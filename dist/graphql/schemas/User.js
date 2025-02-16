@@ -1,6 +1,5 @@
 import { gql } from "graphql-tag";
 export const userTypeDefs = gql `
-
   enum Role {
     ADMIN
     USER
@@ -25,7 +24,7 @@ export const userTypeDefs = gql `
 
   type Query {
     me: User
-    getUsers: [User!]!  # ✅ Moved outside Mutation
+    getUsers: [User!]!
   }
 
   type Mutation {
@@ -38,6 +37,15 @@ export const userTypeDefs = gql `
       password: String!
       isAdmin: Boolean
     ): AuthPayload!
+
+    registerAdmin(
+      fullName: String!
+      email: String!
+      phoneNumber: String!
+      address: String
+      driversLicense: String!
+      password: String!
+    ): AuthPayload!  # ✅ Added registerAdmin mutation
 
     login(email: String!, password: String!): AuthPayload!
   }

@@ -24,18 +24,24 @@ await server.start();
 app.use("/graphql", expressMiddleware(server, {
     context: async ({ req }) => {
         const token = req.headers.authorization?.split(" ")[1];
+        let user;
         if (token) {
             try {
                 const decoded = jwt.verify(token, process.env.JWT_SECRET);
-                const user = await prisma.user.findUnique({ where: { id: decoded.id } });
-                return { user, prisma };
+                const foundUser = await prisma.user.findUnique({
+                    where: { id: decoded.id },
+                    select: { id: true, role: true }, // Only selecting necessary fields
+                });
+                if (foundUser) {
+                    user = foundUser;
+                }
             }
             catch (error) {
                 console.error("Invalid token", error);
             }
         }
-        return { prisma }; // No token, just return Prisma instance
-    }
+        return { req, user, prisma };
+    },
 }));
 // Show database connection & timestamp in purple
 const timestamp = new Date().toLocaleString();

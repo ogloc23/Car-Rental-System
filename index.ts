@@ -4,9 +4,11 @@ import jwt, { JwtPayload } from "jsonwebtoken";
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
-import { typeDefs } from "./graphql/merge.js";
-import { resolvers } from "./graphql/merge.js";
+import { typeDefs } from "./src/graphql/merge.js";
+import { resolvers } from "./src/graphql/merge.js";
 import { PrismaClient } from "@prisma/client";
+import { Context } from "./src/types/types.js";
+import { AuthenticationError } from "apollo-server-errors";
 
 dotenv.config();
 
@@ -29,22 +31,30 @@ await server.start();
 
 app.use(
   "/graphql",
-  expressMiddleware(server, {
-    context: async ({ req }) => {
+  expressMiddleware<Context>(server, {
+    context: async ({ req }): Promise<Context> => {
       const token = req.headers.authorization?.split(" ")[1];
-    
+
+      let user: { id: string; role: string } | undefined;
+
       if (token) {
         try {
           const decoded = jwt.verify(token, process.env.JWT_SECRET as string) as JwtPayload;
-          const user = await prisma.user.findUnique({ where: { id: decoded.id } });
-          return { user, prisma };
+          const foundUser = await prisma.user.findUnique({
+            where: { id: decoded.id },
+            select: { id: true, role: true }, // Only selecting necessary fields
+          });
+
+          if (foundUser) {
+            user = foundUser;
+          }
         } catch (error) {
           console.error("Invalid token", error);
         }
       }
-      return { prisma }; // No token, just return Prisma instance
-    }
-    
+
+      return { req, user, prisma };
+    },
   })
 );
 
@@ -55,4 +65,3 @@ console.log(`${purple}Connected to Database at: ${timestamp}${reset}`);
 app.listen(4000, () => {
   console.log(`${purple}🚀 Server running on: http://localhost:4000/graphql${reset}`);
 });
-                                                                                                                                                                   
