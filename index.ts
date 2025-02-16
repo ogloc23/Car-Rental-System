@@ -15,8 +15,10 @@ dotenv.config();
 const purple = "\x1b[35m";
 const reset = "\x1b[0m";
 
-// Initialize Express and Prisma
+// Initialize Prisma Client
 const prisma = new PrismaClient();
+
+// Initialize Express
 const app = express();
 app.use(cors());
 app.use(express.json());
@@ -25,21 +27,33 @@ app.use(express.json());
 const server = new ApolloServer({
   typeDefs,
   resolvers,
-  introspection: true,
+  introspection: true, // ✅ Enable GraphQL Playground & Schema Introspection in production
+  formatError: (error) => {
+    console.error("❌ GraphQL Error:", error);
+    return error;
+  },
 });
 
 // Start Apollo Server
-await server.start();
+async function startServer() {
+  try {
+    await server.start();
+    app.use("/graphql", expressMiddleware(server, { context }));
 
-// Apply middleware
-app.use("/graphql", expressMiddleware(server, { context }));
+    // Show database connection & timestamp in purple
+    const timestamp = new Date().toLocaleString();
+    console.log(`${purple}✅ Connected to Database at: ${timestamp}${reset}`);
 
-// Show database connection & timestamp in purple
-const timestamp = new Date().toLocaleString();
-console.log(`${purple}Connected to Database at: ${timestamp}${reset}`);
+    // Start Express server
+    const PORT = process.env.PORT || 4000;
+    app.listen(PORT, () => {
+      console.log(`${purple}🚀 Server running on: http://localhost:${PORT}/graphql${reset}`);
+    });
+  } catch (error) {
+    console.error("🚨 Server failed to start:", error);
+    process.exit(1);
+  }
+}
 
-// Start Express server
-const PORT = process.env.PORT || 4000;
-app.listen(PORT, () => {
-  console.log(`${purple}🚀 Server running on: http://localhost:${PORT}/graphql${reset}`);
-});
+// Start the server
+startServer();
