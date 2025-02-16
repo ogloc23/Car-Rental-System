@@ -1,0 +1,22 @@
+{
+  "compilerOptions": {
+    "lib": ["ESNext"],
+    "rootDir": "./src",                    // Root directory for source files
+    "outDir": "./dist",                    // Output directory for compiled files
+    "target": "ESNext",                    // ECMAScript version for output
+    "module": "ESNext",                    // Module system to use (ESNext for modern features)
+    "moduleResolution": "node",            // Resolve modules using Node.js algorithm
+    "esModuleInterop": true,               // Enables compatibility with CommonJS modules
+    "skipLibCheck": true,                  // Skip type checking of declaration files
+    "forceConsistentCasingInFileNames": true, // Ensure consistent casing of file names
+    "strict": true,                        // Enable strict type-checking options
+    "allowJs": true,                       // Allow JavaScript files to be included in the compilation
+    "types": ["node", "express"],          // Add express types
+    "resolveJsonModule": true              // Resolve .json modules (if needed)
+  },
+  "include": [
+    "src/**/*.ts",                         // Include all .ts files in the src folder
+    "src/types/**/*.d.ts"                  // Include all type definition files
+  ],
+  "exclude": ["node_modules"]               // Exclude node_modules from compilation
+}

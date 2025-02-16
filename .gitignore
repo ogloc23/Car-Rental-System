@@ -1,0 +1,266 @@
+node_modules
+.env
+
+
+
+
+
+admin = email: "admin@example.com", password: "adminpassword
+
+{
+  "name": "car-rental-system",
+  "version": "1.0.0",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "compile": "tsc",
+    "start": "npm run compile && node .dist/index.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "@apollo/server": "^4.11.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "graphql": "^16.10.0"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.17",
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.13.0",
+    "typescript": "^5.7.3"
+  }
+}
+
+
+{
+    "compilerOptions": {
+      "lib": ["ESNext"],
+      "rootDir": "./src",
+      "outDir": "./dist",
+      "target": "ESNext",
+      "module": "ESNext",
+      "moduleResolution": "node",
+      "esModuleInterop": true,
+      "skipLibCheck": true,
+      "forceConsistentCasingInFileNames": true,
+      "strict": true,
+      "allowJs": true,
+      "types": ["node", "express"]  // Add express here
+    },
+    "include": ["src/**/*"],
+    "exclude": ["node_modules"]
+  }
+  
+
+  /car-rental-system
+├── /src
+│   ├── /config               # Configuration files (DB, JWT, etc.)
+│   ├── /database             # Database connection and queries
+│   ├── /graphql              # GraphQL setup
+│   │   ├── /schemas          # GraphQL schema definitions
+│   │   ├── /resolvers        # GraphQL resolvers for each type
+│   │   ├── /types            # TypeScript types for GraphQL schema
+│   ├── /models               # Database models (tables)
+│   ├── /services             # Business logic (booking, payment processing)
+│   ├── /utils                # Utility functions (e.g., password hashing)
+│   ├── /middleware           # Authentication and authorization middleware
+│   ├── /routes               # Express routes (if needed)
+│   ├── /types                # TypeScript types (interfaces, enums, etc.)
+│   └── server.ts             # Main entry point (Express & Apollo Server setup)
+├── /migrations               # Database migrations for schema changes
+├── /scripts                  # Any CLI scripts (e.g., database seeding)
+├── .env                      # Environment variables (DB connection, JWT secret, etc.)
+├── tsconfig.json             # TypeScript configuration
+├── package.json              # Project dependencies and scripts
+└── README.md                 # Project documentation
+
+🔜 Next Steps
+Now that the database is connected, what do you want to implement next? Here are some options:
+
+1️⃣ Set Up Database Tables & Models
+
+Users (Customers & Admins)
+Cars (Make, Model, Availability)
+Bookings (Rental Start/End Date)
+Payments (Payment Method, Status)
+
+2️⃣ Define GraphQL Schema & Resolvers
+
+type User, type Car, type Booking, type Payment
+Queries (getUsers, getCars, getBookings)
+Mutations (createUser, createBooking, makePayment)
+
+3️⃣ Implement Authentication
+
+User Registration/Login (bcrypt, JWT)
+Role-based access (customer, admin)
+
+
+📌 Progress Report: Where Are We Now?
+We've completed the initial setup and database connection. Below is a breakdown of what we’ve done and what’s left.
+
+✅ Completed So Far
+
+1️⃣ Project Setup & Dependencies Installed
+
+TypeScript, GraphQL (Apollo Server v4), Express, PostgreSQL (pg), dotenv
+2️⃣ Connected to PostgreSQL
+
+Successfully tested the connection to the database.
+3️⃣ Project Structure Set Up
+
+src/index.ts ✅
+src/config/db.ts ✅ (Database connection)
+
+
+🟡 Next Steps: What’s Pending?
+
+🔹 Database Tables & Models
+Module	Status
+Users Table (Customers & Admins)	❌ Pending
+Cars Table	❌ Pending
+Bookings Table	❌ Pending
+Payments Table	❌ Pending
+
+🔹 GraphQL Schema & Resolvers
+Module	Status
+User Registration/Login	❌ Not Yet Implemented
+Car Queries/Mutations	❌ Not Yet Implemented
+Booking Queries/Mutations	❌ Not Yet Implemented
+Payment Processing	❌ Not Yet Implemented
+
+🔹 Admin Controls
+Feature	Status
+Add/Edit/Delete Cars	❌ Not Yet Implemented
+Manage Bookings	❌ Not Yet Implemented
+View Payments	❌ Not Yet Implemented
+Generate Reports	❌ Not Yet Implemented
+
+🔥 Next Immediate Steps
+1️⃣ Create Database Tables
+
+Do you want to use migrations (pg-migrate) or manually create tables with SQL?
+2️⃣ Define GraphQL Schema for Users
+
+User registration/login
+Admin vs customer role-based access
+3️⃣ Start Implementing GraphQL Resolvers
+
+Queries for users, cars, bookings, payments
+🛠️ What would you like to do next?
+
+Set up database tables? (Migrations or manual SQL)
+Start GraphQL schema with User authentication?
+Something else?
+
+
+Next Steps:
+
+Implementing API Routes:
+Set up GraphQL resolvers for user authentication (login, registration, etc.).
+Implement CRUD operations for other models (e.g., cars, bookings, payments).
+
+Password Hashing:
+If you haven't already, make sure you're using a secure method like bcryptjs to hash passwords when registering users.
+
+Testing GraphQL Queries:
+Once the GraphQL routes are set up, you can test the API using tools like Insomnia or Postman.
+
+
+
+car-rental-system/
+│── prisma/                  # Prisma schema and migrations
+│   ├── migrations/          # Database migration files
+│   ├── schema.prisma        # Prisma schema
+│── src/                     # Main source code
+│   ├── graphql/             # GraphQL schemas & resolvers
+│   │   ├── schema.ts        # Main GraphQL schema
+│   │   ├── resolvers/       # GraphQL resolvers
+│   │   │   ├── user.ts      # User resolvers
+│   │   │   ├── car.ts       # Car resolvers
+│   │   │   ├── booking.ts   # Booking resolvers
+│   │   │   ├── payment.ts   # Payment resolvers
+│   │   │   ├── index.ts     # Export all resolvers
+│   ├── middleware/          # Middleware functions
+│   │   ├── authMiddleware.ts# JWT authentication middleware
+│   │   ├── errorHandler.ts  # Global error handler middleware
+│   ├── types/               # TypeScript interfaces
+│   │   ├── types.ts         # GraphQL Context types
+│   ├── utils/               # Utility functions
+│   │   ├── jwt.ts           # JWT token functions (sign/verify)
+│   │   ├── password.ts      # Hashing & verification helpers
+│   ├── config/              # Configurations
+│   │   ├── env.ts           # Environment variable handling
+│   ├── services/            # Business logic
+│   │   ├── userService.ts   # User-related logic
+│   │   ├── carService.ts    # Car-related logic
+│   │   ├── bookingService.ts# Booking-related logic
+│   │   ├── paymentService.ts# Payment processing
+│   ├── index.ts             # Entry point (Express & Apollo Server)
+│── .env                     # Environment variables
+│── package.json             # Project dependencies
+│── tsconfig.json            # TypeScript config
+│── README.md                # Documentation
+
+
+📌 Explanation of Key Folders
+
+1️⃣ prisma/ - Database Schema & Migrations
+schema.prisma → Defines the database structure.
+migrations/ → Stores database migrations when running prisma migrate dev.
+
+2️⃣ src/graphql/ - GraphQL API (Schemas & Resolvers)
+schema.ts → Combines all type definitions.
+resolvers/ → Contains resolvers for each entity (user, car, booking, etc.).
+index.ts → Exports all resolvers for Apollo.
+
+3️⃣ src/middleware/ - Middleware Functions
+authMiddleware.ts → Handles authentication (req.userId from JWT).
+errorHandler.ts → Centralized error handling.
+
+4️⃣ src/types/ - TypeScript Types & Interfaces
+types.ts → Defines GraphQL Context (Context interface).
+
+5️⃣ src/utils/ - Helper Functions
+jwt.ts → Functions for signing & verifying JWT tokens.
+password.ts → Password hashing (bcrypt).
+
+6️⃣ src/config/ - Configurations
+env.ts → Loads & validates environment variables from .env.
+
+7️⃣ src/services/ - Business Logic (Service Layer)
+userService.ts → Handles user operations.
+carService.ts → Handles car CRUD operations.
+bookingService.ts → Handles booking logic.
+paymentService.ts → Handles payment processing.
+
+8️⃣ src/index.ts - Main Server Entry Point
+Initializes Express, Apollo Server, Middleware, Prisma.
+
+## FOR CARS
+Good choice! Let's break it down step by step.
+
+CRUD Operations for Cars
+We'll implement the following operations:
+✅ Create a Car – Admin adds a new car.
+✅ Get All Cars – Fetch all available cars.
+✅ Get a Single Car – Fetch details of a specific car.
+✅ Update a Car – Admin updates car details.
+✅ Delete a Car – Admin removes a car.
+
+
+This model includes:
+
+id: The primary key of type UUID.
+make: The make of the car (e.g., Toyota).
+model: The model of the car (e.g., Corolla).
+year: The manufacturing year of the car.
+licensePlate: A unique license plate number.
+type: The type of car (e.g., sedan, SUV).
+price: The rental price per day.
+availability: A boolean to track if the car is available for rent.
+createdAt and updatedAt: Automatically managed timestamps.
