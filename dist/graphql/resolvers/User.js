@@ -6,12 +6,28 @@ const prisma = new PrismaClient();
 export const userResolvers = {
     Query: {
         me: async (_parent, _args, context) => {
+            console.log("🛠 Checking Context in me Resolver:", context.user);
             if (!context.user) {
+                console.log("❌ Not authenticated.");
                 throw new Error("Unauthorized: Not authenticated.");
             }
-            return await context.prisma.user.findUnique({
+            const user = await prisma.user.findUnique({
                 where: { id: context.user.id },
+                select: {
+                    id: true,
+                    fullName: true,
+                    phoneNumber: true,
+                    email: true,
+                    role: true,
+                    createdAt: true,
+                },
             });
+            if (!user) {
+                console.log(`❌ User not found for ID: ${context.user.id}`);
+                throw new Error("User not found.");
+            }
+            console.log("✅ User found:", user);
+            return user;
         },
         getUsers: async (_parent, _args, context) => {
             await adminMiddleware(context);

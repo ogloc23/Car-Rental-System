@@ -1,22 +1,27 @@
 {
   "compilerOptions": {
     "lib": ["ESNext"],
-    "rootDir": "./src",                    
-    "outDir": "./dist",                    
-    "target": "ESNext",                    
-    "module": "ESNext",                    
-    "moduleResolution": "node",            
-    "esModuleInterop": true,               
-    "skipLibCheck": true,                  
-    "forceConsistentCasingInFileNames": true, 
-    "strict": true,                        
-    "allowJs": true,                       
-    "types": ["node", "express"],          
-    "resolveJsonModule": true              
+    "rootDir": ".",                
+    "outDir": "./dist",            
+    "target": "ESNext",            
+    "module": "NodeNext",            
+    "moduleResolution": "NodeNext",    
+    "esModuleInterop": true,       
+    "skipLibCheck": true,          
+    "forceConsistentCasingInFileNames": true,
+    "strict": true,                
+    "allowJs": true,               
+    "types": ["node", "express"],  
+    "resolveJsonModule": true,      
+    "noImplicitAny": false,         
+    "emitDecoratorMetadata": true,  
+    "experimentalDecorators": true  
   },
   "include": [
+    "index.ts",
     "src/**/*.ts",
+    "prisma/**/*.ts",
     "src/types/**/*.d.ts"
   ],
-  "exclude": ["node_modules"]
+  "exclude": ["node_modules", "dist"]
 }

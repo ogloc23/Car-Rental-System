@@ -1,67 +1,45 @@
 import { ApolloServer } from "@apollo/server";
 import { expressMiddleware } from "@apollo/server/express4";
-import jwt, { JwtPayload } from "jsonwebtoken";
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 import { typeDefs } from "./src/graphql/merge.js";
 import { resolvers } from "./src/graphql/merge.js";
+import { context } from "./src/graphql/context.js"; // Import context from separate file
 import { PrismaClient } from "@prisma/client";
-import { Context } from "./src/types/types.js";
-import { AuthenticationError } from "apollo-server-errors";
 
+// Load environment variables
 dotenv.config();
 
-// ANSI escape code for purple color
+// ANSI escape codes for purple color
 const purple = "\x1b[35m";
 const reset = "\x1b[0m";
 
+// Initialize Express and Prisma
 const prisma = new PrismaClient();
 const app = express();
 app.use(cors());
 app.use(express.json());
 
+// Initialize Apollo Server
 const server = new ApolloServer({
   typeDefs,
   resolvers,
   introspection: true,
 });
 
+// Start Apollo Server
 await server.start();
 
-app.use(
-  "/graphql",
-  expressMiddleware<Context>(server, {
-    context: async ({ req }): Promise<Context> => {
-      const token = req.headers.authorization?.split(" ")[1];
-
-      let user: { id: string; role: string } | undefined;
-
-      if (token) {
-        try {
-          const decoded = jwt.verify(token, process.env.JWT_SECRET as string) as JwtPayload;
-          const foundUser = await prisma.user.findUnique({
-            where: { id: decoded.id },
-            select: { id: true, role: true }, // Only selecting necessary fields
-          });
-
-          if (foundUser) {
-            user = foundUser;
-          }
-        } catch (error) {
-          console.error("Invalid token", error);
-        }
-      }
-
-      return { req, user, prisma };
-    },
-  })
-);
+// Apply middleware
+app.use("/graphql", expressMiddleware(server, { context }));
 
 // Show database connection & timestamp in purple
 const timestamp = new Date().toLocaleString();
 console.log(`${purple}Connected to Database at: ${timestamp}${reset}`);
 
-app.listen(4000, () => {
-  console.log(`${purple}🚀 Server running on: http://localhost:4000/graphql${reset}`);
+// Start Express server
+const PORT = process.env.PORT || 4000;
+app.listen(PORT, () => {
+  console.log(`${purple}🚀 Server running on: http://localhost:${PORT}/graphql${reset}`);
 });
