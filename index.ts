@@ -46,9 +46,12 @@ async function startServer() {
 
     // Start Express server
     const PORT = process.env.PORT || 10000;
+    const serverURL = process.env.RENDER_EXTERNAL_URL || `http://localhost:${PORT}`;
+
     app.listen(PORT, () => {
-      console.log(`${purple}🚀 Server running on: http://localhost:${PORT}/graphql${reset}`);
+      console.log(`${purple}🚀 Server running on: ${serverURL}/graphql${reset}`);
     });
+
   } catch (error) {
     console.error("🚨 Server failed to start:", error);
     process.exit(1);
