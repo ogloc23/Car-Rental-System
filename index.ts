@@ -45,7 +45,7 @@ async function startServer() {
     console.log(`${purple}✅ Connected to Database at: ${timestamp}${reset}`);
 
     // Start Express server
-    const PORT = process.env.PORT || 4000;
+    const PORT = process.env.PORT || 10000;
     app.listen(PORT, () => {
       console.log(`${purple}🚀 Server running on: http://localhost:${PORT}/graphql${reset}`);
     });
