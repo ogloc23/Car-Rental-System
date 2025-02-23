@@ -4,14 +4,14 @@
     "rootDir": ".",                
     "outDir": "./dist",            
     "target": "ESNext",            
-    "module": "NodeNext",            
-    "moduleResolution": "NodeNext",    
+    "module": "ESNext",           // Change to "ESNext" for better compatibility with ES modules
+    "moduleResolution": "node",    
     "esModuleInterop": true,       
     "skipLibCheck": true,          
     "forceConsistentCasingInFileNames": true,
     "strict": true,                
     "allowJs": true,               
-    "types": ["node", "express"],  
+    "types": ["node"],  
     "resolveJsonModule": true,      
     "noImplicitAny": false,         
     "emitDecoratorMetadata": true,  
@@ -20,8 +20,9 @@
   "include": [
     "index.ts",
     "src/**/*.ts",
-    "prisma/**/*.ts",
-    "src/types/**/*.d.ts"
+    "prisma/**/*.ts",             // You may not need this, unless you have TypeScript files in prisma/
+    "src/types/**/*.d.ts",
+    "node_modules/@types/express/index.d.ts"
   ],
   "exclude": ["node_modules", "dist"]
 }

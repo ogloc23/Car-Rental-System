@@ -41,6 +41,6 @@ export const carTypeDefs = gql`
       availability: Boolean
     ): Car!
 
-    deleteCar(id: ID!): String!
+    deleteCar(id: ID!): Car
   }
 `;

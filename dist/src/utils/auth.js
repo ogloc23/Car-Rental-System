@@ -1,5 +1,5 @@
+"use strict";
 // import jwt from "jsonwebtoken";
-export {};
 // export const getUserIdFromToken = (authHeader?: string): string | undefined => {
 //   if (!authHeader || !authHeader.startsWith("Bearer ")) {
 //     return undefined;

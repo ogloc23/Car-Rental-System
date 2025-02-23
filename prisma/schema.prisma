@@ -4,7 +4,7 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL") // Set this in your .env file
+  url      = env("DATABASE_URL") // Ensure this is set in your .env file
 }
 
 enum Role {
@@ -12,28 +12,61 @@ enum Role {
   ADMIN
 }
 
+enum BookingStatus {
+  PENDING
+  CONFIRMED
+  CANCELED
+  COMPLETED
+}
+
 model User {
-  id             String  @id @default(uuid()) // Unique user ID
+  id             String    @id @default(uuid()) 
   fullName       String
-  email          String  @unique
-  phoneNumber    String  @unique
-  address        String?
-  driversLicense String  @unique
+  email          String    @unique
+  phoneNumber    String    @unique
+  address        String? 
+  driversLicense String    @unique
   password       String
-  role           Role    @default(USER) // Default role is USER
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  role           Role      @default(USER) 
+  bookings       Booking[] 
+
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 }
 
 model Car {
-  id           String  @id @default(uuid())
+  id           String    @id @default(uuid()) 
   make         String
   model        String
   year         Int
-  licensePlate String  @unique
+  licensePlate String    @unique
   type         String
   price        Float
-  availability Boolean  @default(true)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  availability Boolean   @default(true)
+  bookings     Booking[] 
+
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([make, model]) 
+}
+
+model Booking {
+  id              String        @id @default(uuid()) 
+  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade) // Prisma supports 'Cascade'
+  userId          String
+  car             Car           @relation(fields: [carId], references: [id], onDelete: Restrict) // Prevent accidental car deletions
+  carId           String
+  startDate       DateTime
+  endDate         DateTime
+  pickupLocation  String
+  dropoffLocation String
+  totalPrice      Float         @default(0.0) 
+  status          BookingStatus @default(PENDING) 
+
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@index([userId, status]) 
+  @@unique([carId, startDate, endDate]) // Prevents duplicate bookings for the same car and date range
 }

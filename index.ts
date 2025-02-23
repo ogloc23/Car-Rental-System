@@ -1,17 +1,17 @@
-import { ApolloServer } from "@apollo/server";
-import { expressMiddleware } from "@apollo/server/express4";
-import express from "express";
+import express, { Application } from "express";
 import cors from "cors";
 import dotenv from "dotenv";
+import { ApolloServer } from "apollo-server-express";
 import { typeDefs } from "./src/graphql/merge.js";
 import { resolvers } from "./src/graphql/merge.js";
-import { context } from "./src/graphql/context.js"; // Import context from separate file
+import { context } from "./src/graphql/context.js";
 import { PrismaClient } from "@prisma/client";
+import { ApolloServerPluginLandingPageGraphQLPlayground } from "apollo-server-core";
 
 // Load environment variables
 dotenv.config();
 
-// ANSI escape codes for purple color
+// ANSI escape codes for colored logs
 const purple = "\x1b[35m";
 const reset = "\x1b[0m";
 
@@ -19,7 +19,7 @@ const reset = "\x1b[0m";
 const prisma = new PrismaClient();
 
 // Initialize Express
-const app = express();
+const app: Application = express();
 app.use(cors());
 app.use(express.json());
 
@@ -27,26 +27,34 @@ app.use(express.json());
 const server = new ApolloServer({
   typeDefs,
   resolvers,
-  introspection: true, // ✅ Enable GraphQL Playground & Schema Introspection in production
+  context,
+  introspection: true, // ✅ Allows GraphQL Playground in production
+  plugins: [ApolloServerPluginLandingPageGraphQLPlayground()], // ✅ Enables GraphQL Playground
   formatError: (error) => {
-    console.error("❌ GraphQL Error:", error);
-    return error;
+    console.error(`${purple}❌ GraphQL Error:${reset}`, error);
+    return {
+      message: error.message,
+      path: error.path,
+      extensions: error.extensions,
+    };
   },
 });
 
 // Start Apollo Server
 async function startServer() {
   try {
-    await server.start();
-    app.use("/graphql", expressMiddleware(server, { context }));
+    console.log(`${purple}⏳ Connecting to database...${reset}`);
+    await prisma.$connect(); // Ensure database connection
 
-    // Show database connection & timestamp in purple
+    await server.start();
+    server.applyMiddleware({ app });
+
     const timestamp = new Date().toLocaleString();
-    console.log(`${purple}✅ Connected to Database at: ${timestamp}${reset}`);
+    console.log(`${purple}✅ Connected to Supabase Database at: ${timestamp}${reset}`);
 
     // Start Express server
-    const PORT = process.env.PORT || 10000;
-    const serverURL = process.env.RENDER_EXTERNAL_URL || `http://localhost:${PORT}`;
+    const PORT = process.env.PORT || 4000;
+    const serverURL = process.env.SERVER_URL || `http://localhost:${PORT}`;
 
     app.listen(PORT, () => {
       console.log(`${purple}🚀 Server running on: ${serverURL}/graphql${reset}`);

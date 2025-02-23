@@ -1,9 +1,12 @@
 node_modules
 .env
+testConection.ts
 
 
 
-
+vybzkartel2003
+https://zjsydgokpddoqztotenv.supabase.co
+eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inpqc3lkZ29rcGRkb3F6dG90ZW52Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDAxMTU5NzUsImV4cCI6MjA1NTY5MTk3NX0.npRWIncPeOtz08qz13faN_xkuibOkID1Jg2jzUxb3Fc
 
 admin = email: "admin@example.com", password: "adminpassword
 
@@ -264,3 +267,33 @@ type: The type of car (e.g., sedan, SUV).
 price: The rental price per day.
 availability: A boolean to track if the car is available for rent.
 createdAt and updatedAt: Automatically managed timestamps.
+
+
+
+Great! For the Bookings feature, we need to consider the following:
+
+Booking Model
+A booking should include:
+
+id: Unique identifier.
+userId: The user who made the booking.
+carId: The car being rented.
+rentalStartDate: When the rental begins.
+rentalEndDate: When the rental ends.
+pickupLocation: Where the car is picked up.
+dropoffLocation: Where the car is returned.
+totalPrice: The total rental cost.
+status: (Pending, Confirmed, Canceled, Completed)
+Resolvers
+Queries
+
+getBookings: Retrieve all bookings (Admin-only).
+getMyBookings: Retrieve a user’s bookings.
+getBooking(id: String!): Fetch a specific booking.
+Mutations
+
+createBooking(userId, carId, rentalStartDate, rentalEndDate, pickupLocation, dropoffLocation): Creates a booking.
+updateBooking(id, rentalEndDate, dropoffLocation, status): Modify booking details.
+cancelBooking(id): Allows users to cancel their own bookings.
+deleteBooking(id): Admin can remove a booking.
+Would you like to define the Prisma model first, or should we start with the GraphQL schema and resolvers?
