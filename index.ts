@@ -15,14 +15,8 @@ dotenv.config();
 const purple = "\x1b[35m";
 const reset = "\x1b[0m";
 
-// Initialize Prisma Client with Render database
-const prisma = new PrismaClient({
-  datasources: {
-    db: {
-      url: process.env.DATABASE_URL, // ✅ Use the Render database URL
-    },
-  },
-});
+// Initialize Prisma Client
+const prisma = new PrismaClient();
 
 // Initialize Express
 const app: Application = express();
@@ -34,13 +28,17 @@ const server = new ApolloServer({
   typeDefs,
   resolvers,
   context,
-  introspection: true, // ✅ Allows GraphQL Playground in production
-  plugins: [ApolloServerPluginLandingPageGraphQLPlayground()], // ✅ Enables GraphQL Playground
+  introspection: process.env.NODE_ENV !== "production", // Enable Playground only in dev
+  plugins:
+    process.env.NODE_ENV !== "production"
+      ? [ApolloServerPluginLandingPageGraphQLPlayground()]
+      : [],
   formatError: (error) => {
     console.error(`${purple}❌ GraphQL Error:${reset}`, error);
     return {
       message: error.message,
       path: error.path,
+      locations: error.locations,
       extensions: error.extensions,
     };
   },
@@ -49,14 +47,14 @@ const server = new ApolloServer({
 // Start Apollo Server
 async function startServer() {
   try {
-    console.log(`${purple}⏳ Connecting to Render database...${reset}`);
-    await prisma.$connect(); // ✅ Ensure database connection
+    console.log(`${purple}⏳ Connecting to database...${reset}`);
+    await prisma.$connect();
 
     await server.start();
     server.applyMiddleware({ app });
 
     const timestamp = new Date().toLocaleString();
-    console.log(`${purple}✅ Connected to Render Database at: ${timestamp}${reset}`);
+    console.log(`${purple}✅ Connected to database at: ${timestamp}${reset}`);
 
     // Start Express server
     const PORT = process.env.PORT || 4000;
