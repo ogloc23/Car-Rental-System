@@ -33,6 +33,7 @@ const server = new ApolloServer({
     process.env.NODE_ENV !== "production"
       ? [ApolloServerPluginLandingPageGraphQLPlayground()]
       : [],
+  persistedQueries: false, // 🚀 Disable persisted queries to avoid DoS risk
   formatError: (error) => {
     console.error(`${purple}❌ GraphQL Error:${reset}`, error);
     return {
@@ -44,9 +45,11 @@ const server = new ApolloServer({
   },
 });
 
+
 // Start Apollo Server
 async function startServer() {
   try {
+    console.log(`🚀 Running in ${process.env.NODE_ENV || "development"} mode`);
     console.log(`${purple}⏳ Connecting to database...${reset}`);
     await prisma.$connect();
 
