@@ -23,11 +23,8 @@ const server = new ApolloServer({
     typeDefs,
     resolvers,
     context,
-    introspection: process.env.NODE_ENV !== "production", // Enable Playground only in dev
-    plugins: process.env.NODE_ENV !== "production"
-        ? [ApolloServerPluginLandingPageGraphQLPlayground()]
-        : [],
-    persistedQueries: false, // 🚀 Disable persisted queries to avoid DoS risk
+    introspection: true, // ✅ Allow introspection even in production
+    plugins: [ApolloServerPluginLandingPageGraphQLPlayground()],
     formatError: (error) => {
         console.error(`${purple}❌ GraphQL Error:${reset}`, error);
         return {
