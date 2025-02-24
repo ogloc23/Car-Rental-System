@@ -12,8 +12,14 @@ dotenv.config();
 // ANSI escape codes for colored logs
 const purple = "\x1b[35m";
 const reset = "\x1b[0m";
-// Initialize Prisma Client
-const prisma = new PrismaClient();
+// Initialize Prisma Client with Render database
+const prisma = new PrismaClient({
+    datasources: {
+        db: {
+            url: process.env.DATABASE_URL, // ✅ Use the Render database URL
+        },
+    },
+});
 // Initialize Express
 const app = express();
 app.use(cors());
@@ -37,12 +43,12 @@ const server = new ApolloServer({
 // Start Apollo Server
 async function startServer() {
     try {
-        console.log(`${purple}⏳ Connecting to database...${reset}`);
-        await prisma.$connect(); // Ensure database connection
+        console.log(`${purple}⏳ Connecting to Render database...${reset}`);
+        await prisma.$connect(); // ✅ Ensure database connection
         await server.start();
         server.applyMiddleware({ app });
         const timestamp = new Date().toLocaleString();
-        console.log(`${purple}✅ Connected to Supabase Database at: ${timestamp}${reset}`);
+        console.log(`${purple}✅ Connected to Render Database at: ${timestamp}${reset}`);
         // Start Express server
         const PORT = process.env.PORT || 4000;
         const serverURL = process.env.SERVER_URL || `http://localhost:${PORT}`;

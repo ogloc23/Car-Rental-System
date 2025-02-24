@@ -4,7 +4,56 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL") // Ensure this is set in your .env file
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id             String    @id @default(uuid())
+  fullName       String
+  email          String    @unique
+  phoneNumber    String    @unique
+  address        String?
+  driversLicense String    @unique
+  password       String
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  role           Role      @default(USER)
+  bookings       Booking[]
+}
+
+model Car {
+  id           String    @id @default(uuid())
+  make         String
+  model        String
+  year         Int
+  licensePlate String    @unique
+  type         String
+  price        Float
+  availability Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  bookings     Booking[]
+
+  @@index([make, model])
+}
+
+model Booking {
+  id              String        @id @default(uuid())
+  userId          String
+  carId           String
+  startDate       DateTime
+  endDate         DateTime
+  totalPrice      Float         @default(0.0)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  dropoffLocation String
+  pickupLocation  String
+  status          BookingStatus @default(PENDING)
+  car             Car           @relation(fields: [carId], references: [id])
+  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([carId, startDate, endDate])
+  @@index([userId, status])
 }
 
 enum Role {
@@ -17,56 +66,4 @@ enum BookingStatus {
   CONFIRMED
   CANCELED
   COMPLETED
-}
-
-model User {
-  id             String    @id @default(uuid()) 
-  fullName       String
-  email          String    @unique
-  phoneNumber    String    @unique
-  address        String? 
-  driversLicense String    @unique
-  password       String
-  role           Role      @default(USER) 
-  bookings       Booking[] 
-
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
-}
-
-model Car {
-  id           String    @id @default(uuid()) 
-  make         String
-  model        String
-  year         Int
-  licensePlate String    @unique
-  type         String
-  price        Float
-  availability Boolean   @default(true)
-  bookings     Booking[] 
-
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
-
-  @@index([make, model]) 
-}
-
-model Booking {
-  id              String        @id @default(uuid()) 
-  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade) // Prisma supports 'Cascade'
-  userId          String
-  car             Car           @relation(fields: [carId], references: [id], onDelete: Restrict) // Prevent accidental car deletions
-  carId           String
-  startDate       DateTime
-  endDate         DateTime
-  pickupLocation  String
-  dropoffLocation String
-  totalPrice      Float         @default(0.0) 
-  status          BookingStatus @default(PENDING) 
-
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
-
-  @@index([userId, status]) 
-  @@unique([carId, startDate, endDate]) // Prevents duplicate bookings for the same car and date range
 }
