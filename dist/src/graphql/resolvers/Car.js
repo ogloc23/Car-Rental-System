@@ -1,4 +1,4 @@
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient, CarStatus } from "@prisma/client";
 import { handleAuthorization } from "../../utils/error.js";
 const prisma = new PrismaClient();
 export const carResolvers = {
@@ -26,24 +26,34 @@ export const carResolvers = {
         },
     },
     Mutation: {
-        addCar: async (_parent, args, context) => {
+        addCar: async (_parent, { make, model, year, licensePlate, type, price, availability, carStatus, imageUrl, }, context) => {
             handleAuthorization(context.user ?? { role: "" }, "ADMIN"); // Only admins can add cars
             try {
                 // Check if a car with the same license plate already exists
-                const existingCar = await prisma.car.findUnique({
-                    where: { licensePlate: args.licensePlate },
-                });
+                const existingCar = await prisma.car.findUnique({ where: { licensePlate } });
                 if (existingCar) {
                     throw new Error("A car with this license plate already exists.");
                 }
-                return await prisma.car.create({ data: args });
+                // Define the data explicitly
+                const carData = {
+                    make,
+                    model,
+                    year,
+                    licensePlate,
+                    type,
+                    price,
+                    availability,
+                    carStatus: CarStatus[carStatus], // ✅ Correctly map to Prisma enum
+                    imageUrl: imageUrl ?? null, // Ensure nullable field is handled correctly
+                };
+                return await prisma.car.create({ data: carData });
             }
             catch (error) {
                 console.error("Error adding car:", error);
                 throw new Error("Failed to add car. Please try again.");
             }
         },
-        updateCar: async (_parent, { id, ...updates }, context) => {
+        updateCar: async (_parent, { id, carStatus, ...updates }, context) => {
             handleAuthorization(context.user ?? { role: "" }, "ADMIN"); // Only admins can update cars
             try {
                 const existingCar = await prisma.car.findUnique({ where: { id } });
@@ -53,6 +63,7 @@ export const carResolvers = {
                     where: { id },
                     data: {
                         ...updates,
+                        ...(carStatus ? { carStatus: CarStatus[carStatus] } : {}), // ✅ Ensure Prisma enum compatibility
                         updatedAt: new Date(),
                     },
                 });

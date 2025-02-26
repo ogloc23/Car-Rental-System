@@ -6,6 +6,7 @@ import { typeDefs } from "./src/graphql/merge.js";
 import { resolvers } from "./src/graphql/merge.js";
 import { context } from "./src/graphql/context.js";
 import { PrismaClient } from "@prisma/client";
+import paystackWebhook from "./src/utils/webhook.js";
 import { ApolloServerPluginLandingPageGraphQLPlayground } from "apollo-server-core";
 
 // Load environment variables
@@ -22,6 +23,7 @@ const prisma = new PrismaClient();
 const app: Application = express();
 app.use(cors());
 app.use(express.json());
+app.use("/webhook", paystackWebhook);
 
 // Initialize Apollo Server
 const server = new ApolloServer({

@@ -23,6 +23,6 @@
     "prisma/**/*.ts",             // You may not need this, unless you have TypeScript files in prisma/
     "src/types/**/*.d.ts",
     "node_modules/@types/express/index.d.ts"
-  ],
+, "testConnection.ts"  ],
   "exclude": ["node_modules", "dist"]
 }

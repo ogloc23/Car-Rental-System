@@ -1,5 +1,11 @@
 import { gql } from "graphql-tag";
 export const carTypeDefs = gql `
+  enum CarStatus {
+    AVAILABLE
+    RENTED
+    UNDER_MAINTENANCE
+  }
+
   type Car {
     id: ID!
     make: String!
@@ -9,6 +15,8 @@ export const carTypeDefs = gql `
     type: String!
     price: Float!
     availability: Boolean!
+    carStatus: CarStatus!
+    imageUrl: String
     createdAt: String!
     updatedAt: String!
   }
@@ -26,7 +34,9 @@ export const carTypeDefs = gql `
       licensePlate: String!
       type: String!
       price: Float!
-      availability: Boolean!
+      availability: Boolean  # Optional
+      carStatus: CarStatus  # ✅ Added carStatus
+      imageUrl: String
     ): Car!
 
     updateCar(
@@ -38,6 +48,8 @@ export const carTypeDefs = gql `
       type: String
       price: Float
       availability: Boolean
+      carStatus: CarStatus  # ✅ Allows updating carStatus
+      imageUrl: String
     ): Car!
 
     deleteCar(id: ID!): Car

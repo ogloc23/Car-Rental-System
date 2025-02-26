@@ -1,31 +1,5 @@
 import { BookingStatus } from "@prisma/client";
 import { formatISO } from "date-fns";
-cancelBooking: async (_parent, { id }, context) => {
-    if (!context.user)
-        throw new Error("Unauthorized");
-    const booking = await context.prisma.booking.findUnique({ where: { id } });
-    if (!booking)
-        throw new Error("Booking not found");
-    if (booking.userId !== context.user.id)
-        throw new Error("You can only cancel your own bookings");
-    // Update the booking status to CANCELED
-    const canceledBooking = await context.prisma.booking.update({
-        where: { id },
-        data: { status: BookingStatus.CANCELED },
-    });
-    // Notify the user
-    await sendNotification(context.user.id, `Your booking (ID: ${canceledBooking.id}) has been successfully canceled.`);
-    return {
-        id: canceledBooking.id,
-        status: canceledBooking.status,
-        startDate: formatISO(new Date(canceledBooking.startDate)), // Convert to ISO format
-        endDate: formatISO(new Date(canceledBooking.endDate)),
-        pickupLocation: canceledBooking.pickupLocation,
-        dropoffLocation: canceledBooking.dropoffLocation,
-        totalPrice: canceledBooking.totalPrice,
-        updatedAt: formatISO(new Date(canceledBooking.updatedAt)), // Convert to ISO format
-    };
-};
 import { sendNotification } from "../../utils/notification.js";
 export const bookingResolvers = {
     Query: {
@@ -134,7 +108,7 @@ export const bookingResolvers = {
             }
             // Calculate total price
             const days = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
-            const totalPrice = car.price * days;
+            const totalPrice = Number(car.price) * days;
             // Create new booking with relations
             const booking = await context.prisma.booking.create({
                 data: {
