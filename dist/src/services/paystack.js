@@ -7,50 +7,47 @@ const PAYSTACK_API_URL = "https://api.paystack.co";
 if (!PAYSTACK_SECRET_KEY || !PAYSTACK_CALLBACK_URL) {
     throw new Error("Missing Paystack configuration in environment variables.");
 }
+const HEADERS = {
+    Authorization: `Bearer ${PAYSTACK_SECRET_KEY}`,
+    "Content-Type": "application/json",
+};
+/**
+ * Initialize a payment with Paystack.
+ * @param email - Customer's email address.
+ * @param amount - Amount in Naira (NGN).
+ * @returns PaystackResponse
+ */
 export const initializePayment = async (email, amount) => {
     try {
         const response = await axios.post(`${PAYSTACK_API_URL}/transaction/initialize`, {
             email,
-            amount: amount * 100, // Convert to kobo (Paystack works with smallest currency unit)
+            amount, // Now in Naira, no need to multiply by 100
             currency: "NGN",
             callback_url: PAYSTACK_CALLBACK_URL,
-        }, {
-            headers: {
-                Authorization: `Bearer ${PAYSTACK_SECRET_KEY}`,
-                "Content-Type": "application/json",
-            },
-        });
+        }, { headers: HEADERS });
         return response.data;
     }
     catch (error) {
-        if (axios.isAxiosError(error)) {
-            console.error("Paystack API Error:", error.response?.data || error.message);
-            throw new Error(error.response?.data?.message || "Payment initialization failed.");
-        }
-        else {
-            console.error("Unknown Error:", error);
-            throw new Error("An unexpected error occurred during payment initialization.");
-        }
+        console.error("❌ Paystack API Error (Initialize Payment):", axios.isAxiosError(error) ? error.response?.data || error.message : error);
+        throw new Error("Payment initialization failed. Please try again.");
     }
 };
+/**
+ * Verify a payment transaction on Paystack.
+ * @param reference - The payment reference.
+ * @returns PaystackResponse
+ */
 export const verifyPayment = async (reference) => {
     try {
-        const response = await axios.get(`${PAYSTACK_API_URL}/transaction/verify/${reference}`, {
-            headers: {
-                Authorization: `Bearer ${PAYSTACK_SECRET_KEY}`,
-                "Content-Type": "application/json",
-            },
-        });
+        const response = await axios.get(`${PAYSTACK_API_URL}/transaction/verify/${reference}`, { headers: HEADERS });
+        // Convert amount from Kobo to Naira before returning
+        if (response.data?.data?.amount) {
+            response.data.data.amount = response.data.data.amount / 100;
+        }
         return response.data;
     }
     catch (error) {
-        if (axios.isAxiosError(error)) {
-            console.error("Paystack API Error:", error.response?.data || error.message);
-            throw new Error(error.response?.data?.message || "Payment verification failed.");
-        }
-        else {
-            console.error("Unknown Error:", error);
-            throw new Error("An unexpected error occurred during payment verification.");
-        }
+        console.error("❌ Paystack API Error (Verify Payment):", axios.isAxiosError(error) ? error.response?.data || error.message : error);
+        throw new Error("Payment verification failed. Please try again.");
     }
 };

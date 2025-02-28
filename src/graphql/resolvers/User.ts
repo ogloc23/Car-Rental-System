@@ -32,14 +32,25 @@ export const userResolvers = {
       return user;
     },
     
-    
-    
     getUsers: async (_parent: any, _args: any, context: Context) => {
-      await adminMiddleware(context);
+      await adminMiddleware(context); // Ensure only admins can fetch users
+    
       return prisma.user.findMany({
-        select: { id: true, fullName: true, email: true, role: true },
+        select: {
+          id: true,
+          fullName: true, // ✅ Uses fullName instead of firstName & lastName
+          email: true,
+          phoneNumber: true, // ✅ Handles null safely
+          address: true,
+          driversLicense: true,
+          role: true,
+          createdAt: true,
+          updatedAt: true,
+        },
       });
     },
+    
+    
   },
 
   Mutation: {

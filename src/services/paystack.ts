@@ -3,73 +3,97 @@ import dotenv from "dotenv";
 
 dotenv.config();
 
-const PAYSTACK_SECRET_KEY = process.env.PAYSTACK_SECRET_KEY!;
-const PAYSTACK_CALLBACK_URL = process.env.PAYSTACK_CALLBACK_URL!;
+const PAYSTACK_SECRET_KEY = process.env.PAYSTACK_SECRET_KEY;
+const PAYSTACK_CALLBACK_URL = process.env.PAYSTACK_CALLBACK_URL;
 const PAYSTACK_API_URL = "https://api.paystack.co";
 
-if (!PAYSTACK_SECRET_KEY || !PAYSTACK_CALLBACK_URL) {
-  throw new Error("Missing Paystack configuration in environment variables.");
+// ✅ Validate environment variables at runtime
+if (!PAYSTACK_SECRET_KEY) {
+  throw new Error("❌ Missing PAYSTACK_SECRET_KEY in environment variables.");
 }
+
+if (!PAYSTACK_CALLBACK_URL) {
+  throw new Error("❌ Missing PAYSTACK_CALLBACK_URL in environment variables.");
+}
+
+// ✅ Set up headers for API requests
+const HEADERS = {
+  Authorization: `Bearer ${PAYSTACK_SECRET_KEY}`,
+  "Content-Type": "application/json",
+};
 
 interface PaystackResponse {
   status: boolean;
   message: string;
-  data?: any; 
+  data?: any;
 }
 
+/**
+ * ✅ Initialize a payment with Paystack.
+ * @param email - Customer's email address.
+ * @param amount - Amount in Naira (NGN).
+ * @returns PaystackResponse
+ */
 export const initializePayment = async (
   email: string,
   amount: number
 ): Promise<PaystackResponse> => {
   try {
+    if (amount <= 0) {
+      throw new Error("❌ Invalid payment amount. Must be greater than zero.");
+    }
+
+    // ✅ Convert NGN to Kobo before sending to Paystack
+    const amountInKobo = amount * 100;
+
     const response = await axios.post<PaystackResponse>(
       `${PAYSTACK_API_URL}/transaction/initialize`,
       {
         email,
-        amount: amount * 100, // Convert to kobo (Paystack works with smallest currency unit)
+        amount: amountInKobo,
         currency: "NGN",
         callback_url: PAYSTACK_CALLBACK_URL,
       },
-      {
-        headers: {
-          Authorization: `Bearer ${PAYSTACK_SECRET_KEY}`,
-          "Content-Type": "application/json",
-        },
-      }
+      { headers: HEADERS }
     );
 
     return response.data;
   } catch (error) {
-    if (axios.isAxiosError(error)) {
-      console.error("Paystack API Error:", error.response?.data || error.message);
-      throw new Error(error.response?.data?.message || "Payment initialization failed.");
-    } else {
-      console.error("Unknown Error:", error);
-      throw new Error("An unexpected error occurred during payment initialization.");
-    }
+    console.error(
+      "❌ Paystack API Error (Initialize Payment):",
+      axios.isAxiosError(error) ? error.response?.data || error.message : error
+    );
+    throw new Error("Payment initialization failed. Please try again.");
   }
 };
 
+/**
+ * ✅ Verify a payment transaction on Paystack.
+ * @param reference - The payment reference.
+ * @returns PaystackResponse
+ */
 export const verifyPayment = async (reference: string): Promise<PaystackResponse> => {
   try {
     const response = await axios.get<PaystackResponse>(
       `${PAYSTACK_API_URL}/transaction/verify/${reference}`,
-      {
-        headers: {
-          Authorization: `Bearer ${PAYSTACK_SECRET_KEY}`,
-          "Content-Type": "application/json",
-        },
-      }
+      { headers: HEADERS }
     );
+
+    if (!response.data?.status) {
+      throw new Error("❌ Payment verification failed at Paystack.");
+    }
+
+    // ✅ Convert amount from Kobo to Naira before returning
+    if (response.data?.data?.amount) {
+      response.data.data.amount = response.data.data.amount / 100;
+    }
 
     return response.data;
   } catch (error) {
-    if (axios.isAxiosError(error)) {
-      console.error("Paystack API Error:", error.response?.data || error.message);
-      throw new Error(error.response?.data?.message || "Payment verification failed.");
-    } else {
-      console.error("Unknown Error:", error);
-      throw new Error("An unexpected error occurred during payment verification.");
-    }
+    console.error(
+      "❌ Paystack API Error (Verify Payment):",
+      axios.isAxiosError(error) ? error.response?.data || error.message : error
+    );
+    throw new Error("Payment verification failed. Please try again.");
   }
 };

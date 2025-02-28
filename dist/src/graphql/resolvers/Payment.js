@@ -1,6 +1,6 @@
 import { initializePayment, verifyPayment } from "../../services/paystack.js";
 import { PrismaClient } from "@prisma/client";
-const prisma = new PrismaClient(); // ✅ Create a PrismaClient instance
+const prisma = new PrismaClient(); // ✅ Initialize Prisma Client
 export const paymentResolvers = {
     Query: {
         verifyPayment: async (_, { reference }) => {
@@ -14,9 +14,7 @@ export const paymentResolvers = {
                     };
                 }
                 const { amount, status, currency, customer } = response.data;
-                const convertedAmount = amount / 100; // Convert from Kobo to Naira
                 const customerEmail = customer?.email?.toLowerCase().trim();
-                // ✅ Ensure email is valid
                 if (!customerEmail) {
                     return {
                         status: false,
@@ -24,7 +22,9 @@ export const paymentResolvers = {
                         data: null,
                     };
                 }
-                // ✅ Fetch the user ID based on the email
+                // ✅ Convert amount from Kobo to Naira
+                const convertedAmount = amount / 100;
+                // ✅ Fetch user ID based on the email
                 const user = await prisma.user.findUnique({
                     where: { email: customerEmail },
                     select: { id: true },
@@ -36,7 +36,7 @@ export const paymentResolvers = {
                         data: null,
                     };
                 }
-                // ✅ Check if payment already exists to prevent duplicates
+                // ✅ Check if payment already exists
                 const existingPayment = await prisma.payment.findUnique({
                     where: { reference },
                 });
@@ -47,18 +47,17 @@ export const paymentResolvers = {
                         data: existingPayment,
                     };
                 }
-                // ✅ Handle abandoned or failed payments
                 if (status !== "success") {
                     return {
                         status: false,
-                        message: `Payment was not successful. Status: ${status}`,
+                        message: `Payment failed or was abandoned. Status: ${status}`,
                         data: null,
                     };
                 }
-                // ✅ Store successful payments
+                // ✅ Store successful payment
                 const newPayment = await prisma.payment.create({
                     data: {
-                        userId: user.id, // ✅ Ensure userId is included
+                        userId: user.id,
                         reference,
                         email: customerEmail,
                         amount: convertedAmount,
@@ -88,11 +87,13 @@ export const paymentResolvers = {
                 if (amount <= 0) {
                     return {
                         status: false,
-                        message: "Invalid payment amount.",
+                        message: "Invalid payment amount. Must be greater than zero.",
                         data: null,
                     };
                 }
-                const response = await initializePayment(email.toLowerCase().trim(), amount * 100); // Convert NGN to Kobo
+                // ✅ Convert NGN to Kobo before sending to Paystack
+                const amountInKobo = amount * 100;
+                const response = await initializePayment(email.toLowerCase().trim(), amountInKobo);
                 if (!response?.status) {
                     return {
                         status: false,
