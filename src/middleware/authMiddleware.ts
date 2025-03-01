@@ -1,5 +1,3 @@
-
-
 import jwt from "jsonwebtoken";
 import { Context } from "../types/types.js";
 import { PrismaClient } from "@prisma/client";

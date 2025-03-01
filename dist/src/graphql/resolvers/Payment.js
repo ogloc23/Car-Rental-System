@@ -13,7 +13,7 @@ export const paymentResolvers = {
                         data: null,
                     };
                 }
-                const { amount, status, currency, customer } = response.data;
+                const { amount, status, currency, customer, gateway_response } = response.data;
                 const customerEmail = customer?.email?.toLowerCase().trim();
                 if (!customerEmail) {
                     return {
@@ -50,7 +50,7 @@ export const paymentResolvers = {
                 if (status !== "success") {
                     return {
                         status: false,
-                        message: `Payment failed or was abandoned. Status: ${status}`,
+                        message: `Payment failed: ${gateway_response || "Unknown reason"}.`,
                         data: null,
                     };
                 }

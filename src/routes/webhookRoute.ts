@@ -6,7 +6,7 @@ import { PrismaClient } from "@prisma/client";
 const router = express.Router();
 const prisma = new PrismaClient();
 
-router.post("/paystack", express.json(), async (req, res) => {
+router.post("/webhook", express.json(), async (req, res) => {
   try {
     const secret = process.env.PAYSTACK_SECRET_KEY;
 
