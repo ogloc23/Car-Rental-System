@@ -16,6 +16,7 @@ export const carTypeDefs = gql`
     type: String!
     price: Float!
     availability: Boolean!
+    description: String!
     carStatus: CarStatus!
     imageUrl: String
     createdAt: String!
@@ -36,6 +37,7 @@ export const carTypeDefs = gql`
       type: String!
       price: Float!
       availability: Boolean  # Optional
+      description: String!
       carStatus: CarStatus  # ✅ Added carStatus
       imageUrl: String
     ): Car!
@@ -49,6 +51,7 @@ export const carTypeDefs = gql`
       type: String
       price: Float
       availability: Boolean
+      description: String
       carStatus: CarStatus  # ✅ Allows updating carStatus
       imageUrl: String
     ): Car!

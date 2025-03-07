@@ -26,7 +26,23 @@ export const authMiddleware = async (context: Context) => {
       throw new Error("Internal server error: Missing authentication secret.");
     }
 
-    const decoded = jwt.verify(token, process.env.JWT_SECRET) as DecodedToken;
+    let decoded: DecodedToken;
+
+    try {
+      decoded = jwt.verify(token, process.env.JWT_SECRET) as DecodedToken;
+    } catch (error) {
+      if (error instanceof jwt.TokenExpiredError) {
+        console.warn("❌ Token has expired.");
+        throw new Error("Unauthorized: Token has expired.");
+      } else if (error instanceof jwt.JsonWebTokenError) {
+        console.warn("❌ Invalid token.");
+        throw new Error("Unauthorized: Invalid token.");
+      } else {
+        console.error("🚨 Unknown JWT Error:", error);
+        throw new Error("Unauthorized: Authentication failed.");
+      }
+    }
+
     console.log("✅ Decoded Token:", decoded);
 
     if (!decoded.id) {
@@ -50,6 +66,6 @@ export const authMiddleware = async (context: Context) => {
     console.log("✅ User Authenticated:", context.user);
   } catch (error) {
     console.error("🚨 Authentication Error:", error);
-    throw new Error("Unauthorized: Invalid token.");
+    throw error;
   }
 };

@@ -5,8 +5,8 @@ export const bookingResolvers = {
     Query: {
         // ✅ Get all bookings (Admin only)
         getBookings: async (_parent, _args, context) => {
-            if (!context.user || context.user.role !== "ADMIN") {
-                throw new Error("Unauthorized. Only admins can view all bookings.");
+            if (!context.user || (context.user.role !== "ADMIN" && context.user.role !== "STAFF")) {
+                throw new Error("Unauthorized. Only admins and staff can view all bookings.");
             }
             const bookings = await context.prisma.booking.findMany({
                 include: {
@@ -61,7 +61,8 @@ export const bookingResolvers = {
             });
             if (!booking)
                 throw new Error("Booking not found");
-            if (context.user.role !== "ADMIN" && booking.userId !== context.user.id) {
+            // Allow admins and staff to view any booking
+            if (context.user.role !== "ADMIN" && context.user.role !== "STAFF" && booking.userId !== context.user.id) {
                 throw new Error("You can only view your own bookings.");
             }
             return {
@@ -136,8 +137,8 @@ export const bookingResolvers = {
         },
         // ✅ Update a booking (Admin only)
         updateBooking: async (_parent, { id, status }, context) => {
-            if (!context.user || context.user.role !== "ADMIN") {
-                throw new Error("Only admins can update bookings.");
+            if (!context.user || (context.user.role !== "ADMIN" && context.user.role !== "STAFF")) {
+                throw new Error("Only admins and staff can update bookings.");
             }
             if (!Object.values(BookingStatus).includes(status)) {
                 throw new Error("Invalid booking status.");

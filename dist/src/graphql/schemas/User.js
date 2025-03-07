@@ -3,6 +3,7 @@ export const userTypeDefs = gql `
   enum Role {
     ADMIN
     USER
+    STAFF
   }
 
   type User {
@@ -25,6 +26,8 @@ export const userTypeDefs = gql `
   type Query {
     me: User
     getUsers: [User!]!
+    getStaff(id: ID!): User
+    getStaffs: [User!]!  # ✅ Added query to fetch all staff members
   }
 
   type Mutation {
@@ -47,6 +50,16 @@ export const userTypeDefs = gql `
       password: String!
     ): AuthPayload!  # ✅ Added registerAdmin mutation
 
+    registerStaff(
+      fullName: String!
+      email: String!
+      phoneNumber: String!
+      address: String
+      driversLicense: String!
+      password: String!
+    ): User!  # ✅ Added registerStaff mutation
+
     login(email: String!, password: String!): AuthPayload!
+    deleteStaff(id: ID!): String!
   }
 `;

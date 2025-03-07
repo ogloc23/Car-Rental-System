@@ -1,5 +1,5 @@
 import { PrismaClient, CarStatus } from "@prisma/client";
-import { handleAuthorization } from "../../utils/error.js";
+import { adminOrStaffMiddleware } from "../../middleware/adminOrStaffMiddleware.js";
 const prisma = new PrismaClient();
 export const carResolvers = {
     Query: {
@@ -26,8 +26,9 @@ export const carResolvers = {
         },
     },
     Mutation: {
-        addCar: async (_parent, { make, model, year, licensePlate, type, price, availability, carStatus, imageUrl, }, context) => {
-            handleAuthorization(context.user ?? { role: "" }, "ADMIN"); // Only admins can add cars
+        addCar: async (_parent, { make, model, year, licensePlate, type, price, availability, carStatus, imageUrl, description, // ✅ Added description field
+         }, context) => {
+            adminOrStaffMiddleware(context); // ✅ Allow both admins and staff to add cars
             try {
                 // Check if a car with the same license plate already exists
                 const existingCar = await prisma.car.findUnique({ where: { licensePlate } });
@@ -43,8 +44,9 @@ export const carResolvers = {
                     type,
                     price,
                     availability,
-                    carStatus: CarStatus[carStatus], // ✅ Correctly map to Prisma enum
-                    imageUrl: imageUrl ?? null, // Ensure nullable field is handled correctly
+                    carStatus: CarStatus[carStatus],
+                    imageUrl: imageUrl ?? null,
+                    description, // ✅ Include description in the data
                 };
                 return await prisma.car.create({ data: carData });
             }
@@ -53,8 +55,8 @@ export const carResolvers = {
                 throw new Error("Failed to add car. Please try again.");
             }
         },
-        updateCar: async (_parent, { id, carStatus, ...updates }, context) => {
-            handleAuthorization(context.user ?? { role: "" }, "ADMIN"); // Only admins can update cars
+        updateCar: async (_parent, { id, carStatus, description, ...updates }, context) => {
+            adminOrStaffMiddleware(context); // ✅ Allow both admins and staff to update cars
             try {
                 const existingCar = await prisma.car.findUnique({ where: { id } });
                 if (!existingCar)
@@ -63,7 +65,8 @@ export const carResolvers = {
                     where: { id },
                     data: {
                         ...updates,
-                        ...(carStatus ? { carStatus: CarStatus[carStatus] } : {}), // ✅ Ensure Prisma enum compatibility
+                        ...(carStatus ? { carStatus: CarStatus[carStatus] } : {}),
+                        ...(description ? { description } : {}), // ✅ Ensure description is included in updates
                         updatedAt: new Date(),
                     },
                 });
@@ -74,7 +77,7 @@ export const carResolvers = {
             }
         },
         deleteCar: async (_parent, { id }, context) => {
-            handleAuthorization(context.user ?? { role: "" }, "ADMIN"); // Only admins can delete cars
+            adminOrStaffMiddleware(context); // ✅ Allow both admins and staff to delete cars
             try {
                 const existingCar = await prisma.car.findUnique({ where: { id } });
                 if (!existingCar)

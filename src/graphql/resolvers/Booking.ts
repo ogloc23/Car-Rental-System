@@ -7,17 +7,17 @@ export const bookingResolvers = {
   Query: {
     // ✅ Get all bookings (Admin only)
     getBookings: async (_parent: unknown, _args: unknown, context: Context) => {
-        if (!context.user || context.user.role !== "ADMIN") {
-          throw new Error("Unauthorized. Only admins can view all bookings.");
+        if (!context.user || (context.user.role !== "ADMIN" && context.user.role !== "STAFF")) {
+          throw new Error("Unauthorized. Only admins and staff can view all bookings.");
         }
-      
+    
         const bookings = await context.prisma.booking.findMany({
           include: {
             user: true, // Include user details
             car: true, // Include car details
           },
         });
-      
+    
         return bookings.map((booking) => ({
           id: booking.id,
           status: booking.status,
@@ -30,7 +30,8 @@ export const bookingResolvers = {
           user: booking.user, // Include user details
           car: booking.car, // Include car details
         }));
-      },
+    },
+    
 
     // ✅ Get all bookings for the logged-in user
     getUserBookings: async (_parent: unknown, _args: unknown, context: Context) => { 
@@ -58,7 +59,7 @@ export const bookingResolvers = {
     // ✅ Get a single booking by ID
     getBooking: async (_parent: unknown, { id }: { id: string }, context: Context) => {
         if (!context.user) throw new Error("Unauthorized");
-      
+    
         const booking = await context.prisma.booking.findUnique({
           where: { id },
           include: {
@@ -66,13 +67,14 @@ export const bookingResolvers = {
             car: true,
           },
         });
-      
+    
         if (!booking) throw new Error("Booking not found");
-      
-        if (context.user.role !== "ADMIN" && booking.userId !== context.user.id) {
+    
+        // Allow admins and staff to view any booking
+        if (context.user.role !== "ADMIN" && context.user.role !== "STAFF" && booking.userId !== context.user.id) {
           throw new Error("You can only view your own bookings.");
         }
-      
+    
         return {
           id: booking.id,
           status: booking.status,
@@ -85,7 +87,8 @@ export const bookingResolvers = {
           user: booking.user, // Include user details
           car: booking.car, // Include car details
         };
-      },
+    },
+    
     
   },
 
@@ -165,46 +168,47 @@ export const bookingResolvers = {
 
     // ✅ Update a booking (Admin only)
     updateBooking: async (
-      _parent: unknown,
-      { id, status }: { id: string; status: BookingStatus },
-      context: Context
-    ) => {
-      if (!context.user || context.user.role !== "ADMIN") {
-        throw new Error("Only admins can update bookings.");
-      }
-
-      if (!Object.values(BookingStatus).includes(status)) {
-        throw new Error("Invalid booking status.");
-      }
-
-      const booking = await context.prisma.booking.findUnique({ where: { id } });
-      if (!booking) throw new Error("Booking not found");
-
-      // **Ensure only valid status updates are allowed**
-      const validTransitions: Record<BookingStatus, BookingStatus[]> = {
-        [BookingStatus.PENDING]: [BookingStatus.CONFIRMED, BookingStatus.CANCELED],
-        [BookingStatus.CONFIRMED]: [BookingStatus.COMPLETED, BookingStatus.CANCELED],
-        [BookingStatus.CANCELED]: [],
-        [BookingStatus.COMPLETED]: [],
-      };
-
-      if (
-        booking.status !== status &&
-        !validTransitions[booking.status]?.includes(status as BookingStatus)
-      ) {
-        throw new Error(`Cannot change booking status from ${booking.status} to ${status}`);
-      }
-
-      const updatedBooking = await context.prisma.booking.update({
-        where: { id },
-        data: { status },
-      });
-
-      // **Notify user about status update**
-      await sendNotification(booking.userId, `Your booking status has been updated to: ${status}`);
-
-      return updatedBooking;
-    },
+        _parent: unknown,
+        { id, status }: { id: string; status: BookingStatus },
+        context: Context
+      ) => {
+        if (!context.user || (context.user.role !== "ADMIN" && context.user.role !== "STAFF")) {
+          throw new Error("Only admins and staff can update bookings.");
+        }
+      
+        if (!Object.values(BookingStatus).includes(status)) {
+          throw new Error("Invalid booking status.");
+        }
+      
+        const booking = await context.prisma.booking.findUnique({ where: { id } });
+        if (!booking) throw new Error("Booking not found");
+      
+        // **Ensure only valid status updates are allowed**
+        const validTransitions: Record<BookingStatus, BookingStatus[]> = {
+          [BookingStatus.PENDING]: [BookingStatus.CONFIRMED, BookingStatus.CANCELED],
+          [BookingStatus.CONFIRMED]: [BookingStatus.COMPLETED, BookingStatus.CANCELED],
+          [BookingStatus.CANCELED]: [],
+          [BookingStatus.COMPLETED]: [],
+        };
+      
+        if (
+          booking.status !== status &&
+          !validTransitions[booking.status]?.includes(status as BookingStatus)
+        ) {
+          throw new Error(`Cannot change booking status from ${booking.status} to ${status}`);
+        }
+      
+        const updatedBooking = await context.prisma.booking.update({
+          where: { id },
+          data: { status },
+        });
+      
+        // **Notify user about status update**
+        await sendNotification(booking.userId, `Your booking status has been updated to: ${status}`);
+      
+        return updatedBooking;
+      },
+      
 
     // ✅ Cancel a booking (User only)
     cancelBooking: async (

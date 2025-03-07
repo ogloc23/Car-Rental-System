@@ -1,6 +1,6 @@
-import { PrismaClient, Car, Prisma, CarStatus } from "@prisma/client"; 
-import { handleAuthorization } from "../../utils/error.js";
+import { PrismaClient, Car, Prisma, CarStatus } from "@prisma/client";
 import { Context } from "../../types/types.js"; // Ensure Context includes { user?: User | null; prisma: PrismaClient }
+import { adminOrStaffMiddleware } from "../../middleware/adminOrStaffMiddleware.js";
 
 const prisma = new PrismaClient();
 
@@ -40,6 +40,7 @@ export const carResolvers = {
         availability,
         carStatus,
         imageUrl,
+        description, // ✅ Added description field
       }: {
         make: string;
         model: string;
@@ -48,21 +49,22 @@ export const carResolvers = {
         type: string;
         price: number;
         availability: boolean;
-        carStatus: keyof typeof CarStatus; // ✅ Use Prisma's CarStatus enum correctly
+        carStatus: keyof typeof CarStatus;
         imageUrl?: string;
+        description: string; // ✅ Ensure description is required
       },
       context: Context
     ): Promise<Car> => {
-      handleAuthorization(context.user ?? { role: "" }, "ADMIN"); // Only admins can add cars
-
+      adminOrStaffMiddleware(context); // ✅ Allow both admins and staff to add cars
+    
       try {
         // Check if a car with the same license plate already exists
         const existingCar = await prisma.car.findUnique({ where: { licensePlate } });
-
+    
         if (existingCar) {
           throw new Error("A car with this license plate already exists.");
         }
-
+    
         // Define the data explicitly
         const carData: Prisma.CarCreateInput = {
           make,
@@ -72,33 +74,35 @@ export const carResolvers = {
           type,
           price,
           availability,
-          carStatus: CarStatus[carStatus as keyof typeof CarStatus], // ✅ Correctly map to Prisma enum
-          imageUrl: imageUrl ?? null, // Ensure nullable field is handled correctly
+          carStatus: CarStatus[carStatus as keyof typeof CarStatus],
+          imageUrl: imageUrl ?? null,
+          description, // ✅ Include description in the data
         };
-
+    
         return await prisma.car.create({ data: carData });
       } catch (error) {
         console.error("Error adding car:", error);
         throw new Error("Failed to add car. Please try again.");
       }
     },
-
+    
     updateCar: async (
       _parent: unknown,
-      { id, carStatus, ...updates }: { id: string } & Partial<Prisma.CarUpdateInput>,
+      { id, carStatus, description, ...updates }: { id: string } & Partial<Prisma.CarUpdateInput>,
       context: Context
     ): Promise<Car> => {
-      handleAuthorization(context.user ?? { role: "" }, "ADMIN"); // Only admins can update cars
-
+      adminOrStaffMiddleware(context); // ✅ Allow both admins and staff to update cars
+    
       try {
         const existingCar = await prisma.car.findUnique({ where: { id } });
         if (!existingCar) throw new Error("Car not found");
-
+    
         return await prisma.car.update({
           where: { id },
           data: {
             ...updates,
-            ...(carStatus ? { carStatus: CarStatus[carStatus as keyof typeof CarStatus] } : {}), // ✅ Ensure Prisma enum compatibility
+            ...(carStatus ? { carStatus: CarStatus[carStatus as keyof typeof CarStatus] } : {}),
+            ...(description ? { description } : {}), // ✅ Ensure description is included in updates
             updatedAt: new Date(),
           },
         });
@@ -107,13 +111,13 @@ export const carResolvers = {
         throw new Error("Failed to update car. Please try again.");
       }
     },
-
+    
     deleteCar: async (
       _parent: unknown,
       { id }: { id: string },
       context: Context
     ): Promise<Car> => {
-      handleAuthorization(context.user ?? { role: "" }, "ADMIN"); // Only admins can delete cars
+      adminOrStaffMiddleware(context); // ✅ Allow both admins and staff to delete cars
 
       try {
         const existingCar = await prisma.car.findUnique({ where: { id } });
