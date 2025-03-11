@@ -61,6 +61,7 @@ export const userTypeDefs = gql`
     ): User!  # ✅ Added registerStaff mutation
 
     login(email: String!, password: String!): AuthPayload!
+    verifyEmail(code: String!): Boolean!
     deleteStaff(id: ID!): String!
   }
 `;

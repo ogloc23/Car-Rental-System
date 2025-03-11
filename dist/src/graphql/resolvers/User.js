@@ -4,6 +4,7 @@ import jwt from "jsonwebtoken";
 import { GraphQLError } from "graphql";
 import { adminMiddleware } from "../../middleware/adminMiddleware.js";
 import { adminOrStaffMiddleware } from "../../middleware/adminOrStaffMiddleware.js";
+import { sendEmail } from "../../utils/emailService.js";
 const prisma = new PrismaClient();
 export const userResolvers = {
     Query: {
@@ -120,16 +121,39 @@ export const userResolvers = {
         register: async (_parent, args) => {
             const existingUser = await prisma.user.findFirst({
                 where: {
-                    OR: [{ email: args.email }, { phoneNumber: args.phoneNumber }, { driversLicense: args.driversLicense }],
+                    OR: [
+                        { email: args.email },
+                        { phoneNumber: args.phoneNumber },
+                        { driversLicense: args.driversLicense }
+                    ],
                 },
             });
             if (existingUser) {
                 throw new Error("Email, phone number, or driver's license already registered.");
             }
             const hashedPassword = await bcrypt.hash(args.password, 10);
+            let verificationCode = null;
+            let verified = true; // Default for Admin and Staff
+            let verificationCodeExpires = null;
+            if (args.role === "USER") {
+                verificationCode = Math.floor(1000 + Math.random() * 9000).toString(); // Generate a random 4-digit number
+                verificationCodeExpires = new Date(Date.now() + 10 * 60 * 1000); // Expires in 10 minutes
+                verified = false; // Users must verify email
+            }
             const user = await prisma.user.create({
-                data: { ...args, password: hashedPassword, role: "USER" },
+                data: {
+                    ...args,
+                    password: hashedPassword,
+                    role: args.role || "USER",
+                    verified,
+                    verificationCode,
+                    verificationCodeExpires,
+                },
             });
+            // Send verification email only if USER
+            if (args.role === "USER") {
+                await sendEmail(user.email, "Your Verification Code", `Your code: ${verificationCode} (expires in 10 minutes)`);
+            }
             const token = jwt.sign({ id: user.id, role: user.role }, process.env.JWT_SECRET, { expiresIn: "7d" });
             return { user, token };
         },
@@ -138,8 +162,33 @@ export const userResolvers = {
             if (!user || !(await bcrypt.compare(password, user.password))) {
                 throw new Error("Invalid email or password.");
             }
+            // **Ensure Users are verified before login**
+            if (user.role === "USER" && !user.verified) {
+                throw new Error("Please verify your email before logging in.");
+            }
             const token = jwt.sign({ id: user.id, role: user.role }, process.env.JWT_SECRET, { expiresIn: "7d" });
             return { token, user };
+        },
+        verifyEmail: async (_parent, { email, code }) => {
+            const user = await prisma.user.findUnique({ where: { email } });
+            if (!user) {
+                throw new Error("User not found.");
+            }
+            if (user.verified) {
+                throw new Error("Email already verified.");
+            }
+            if (!user.verificationCode || user.verificationCode !== code) {
+                throw new Error("Invalid verification code.");
+            }
+            if (!user.verificationCodeExpires || new Date() > user.verificationCodeExpires) {
+                throw new Error("Verification code has expired. Please request a new one.");
+            }
+            // **Update user as verified**
+            await prisma.user.update({
+                where: { email },
+                data: { verified: true, verificationCode: null, verificationCodeExpires: null },
+            });
+            return { message: "Email verified successfully." };
         },
         deleteStaff: async (_parent, { id }, context) => {
             await adminMiddleware(context);
