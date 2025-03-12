@@ -3,7 +3,7 @@ export const carTypeDefs = gql `
   enum CarStatus {
     AVAILABLE
     RENTED
-    UNDER_MAINTENANCE
+    MAINTENANCE  # Updated to match Prisma
   }
 
   type Car {
@@ -23,8 +23,8 @@ export const carTypeDefs = gql `
   }
 
   type Query {
-    getCars: [Car!]!  # Fetch all cars
-    getCar(id: ID!): Car  # Fetch a single car by ID
+    getCars: [Car!]!
+    getCar(id: ID!): Car  # Kept nullable since resolver can throw NOT_FOUND
   }
 
   type Mutation {
@@ -35,11 +35,11 @@ export const carTypeDefs = gql `
       licensePlate: String!
       type: String!
       price: Float!
-      availability: Boolean  # Optional
+      availability: Boolean
       description: String!
-      carStatus: CarStatus  # ✅ Added carStatus
+      carStatus: CarStatus
       imageUrl: String
-    ): Car!
+    ): Car!  # Non-nullable since resolver creates or throws
 
     updateCar(
       id: ID!
@@ -51,10 +51,10 @@ export const carTypeDefs = gql `
       price: Float
       availability: Boolean
       description: String
-      carStatus: CarStatus  # ✅ Allows updating carStatus
+      carStatus: CarStatus
       imageUrl: String
-    ): Car!
+    ): Car!  # Non-nullable since resolver updates or throws
 
-    deleteCar(id: ID!): Car
+    deleteCar(id: ID!): Car!  # Non-nullable since resolver deletes or throws
   }
 `;

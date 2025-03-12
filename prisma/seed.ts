@@ -1,32 +1,58 @@
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient, Prisma } from "@prisma/client";
 import bcrypt from "bcryptjs";
+import dotenv from "dotenv";
+
+dotenv.config();
+
+const purple = "\x1b[35m";
+const reset = "\x1b[0m";
 
 const prisma = new PrismaClient();
 
 async function main() {
-  console.log("🚀 Seeding admin user...");
+  console.log(`${purple}🚀 Seeding admin user...${reset}`);
 
   try {
-    const hashedPassword = await bcrypt.hash("adminpassword", 10);
+    const adminEmail = process.env.ADMIN_EMAIL || "admin@example.com";
+    const adminPassword = process.env.ADMIN_PASSWORD || "SecureAdminPass123!";
+    const hashedPassword = await bcrypt.hash(adminPassword, 10);
 
     const admin = await prisma.user.upsert({
-      where: { email: "admin@example.com" },
-      update: {}, // No updates required; only creates if not existing
+      where: { email: adminEmail },
+      update: {},
       create: {
         fullName: "Admin User",
-        email: "admin@example.com",
+        email: adminEmail,
         phoneNumber: "0987654321",
         address: "Admin HQ",
         driversLicense: "XYZ123456",
         password: hashedPassword,
-        role: "ADMIN", // Ensure correct enum usage
+        passwordUpdatedAt: new Date(), // Explicitly set
+        verified: false,
+        verificationCode: null,
+        verificationCodeExpires: null,
+        role: "ADMIN",
       },
     });
 
-    console.log("✅ Admin user seeded successfully:", admin);
+    const activityLog = await prisma.activityLog.create({
+      data: {
+        userId: admin.id,
+        action: "Admin user seeded",
+        resourceType: "User",
+        resourceId: admin.id,
+      },
+    });
+
+    console.log(`${purple}✅ Admin user seeded successfully:${reset}`, admin);
+    console.log(`${purple}✅ Activity log created:${reset}`, activityLog);
   } catch (error) {
-    console.error("❌ Error seeding admin:", error);
-    process.exit(1); // Exit the process with failure
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+      console.error(`${purple}❌ Seeding failed: Unique constraint violation (e.g., email or driversLicense already exists)${reset}`, error);
+    } else {
+      console.error(`${purple}❌ Error seeding admin:${reset}`, error);
+    }
+    process.exit(1);
   } finally {
     await prisma.$disconnect();
   }

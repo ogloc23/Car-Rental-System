@@ -1,51 +1,53 @@
-import { initializePayment, verifyPayment } from "../../services/paystack.js";
+import { GraphQLError } from "graphql";
 import { PrismaClient } from "@prisma/client";
+import { Context } from "../../types/types.js";
+import { initializePayment, verifyPayment } from "../../services/paystack.js";
 
-const prisma = new PrismaClient(); // ✅ Initialize Prisma Client
+const prisma = new PrismaClient();
+
+async function logActivity(userId: string, action: string, resourceType?: string, resourceId?: string) {
+  await prisma.activityLog.create({
+    data: {
+      userId,
+      action,
+      resourceType,
+      resourceId,
+    },
+  });
+}
 
 export const paymentResolvers = {
   Query: {
-    verifyPayment: async (_: any, { reference }: { reference: string }) => {
+    verifyPayment: async (_: any, { reference }: { reference: string }, context: Context) => {
       try {
         const response = await verifyPayment(reference);
 
-        if (!response?.status) {
-          return {
-            status: false,
-            message: "Payment verification failed. Please try again.",
-            data: null,
-          };
+        if (!response.status || !response.data) {
+          throw new GraphQLError(response.message || "Payment verification failed.", {
+            extensions: { code: "BAD_REQUEST" },
+          });
         }
 
-        const { amount, status, currency, customer, gateway_response } = response.data;
+        const { amount, status, currency, customer, gateway_response } = response.data; // Safe after check
         const customerEmail = customer?.email?.toLowerCase().trim();
 
         if (!customerEmail) {
-          return {
-            status: false,
-            message: "Payment verification failed: No email found.",
-            data: null,
-          };
+          throw new GraphQLError("Payment verification failed: No email found.", {
+            extensions: { code: "BAD_REQUEST" },
+          });
         }
 
-        // ✅ Convert amount from Kobo to Naira
-        const convertedAmount = amount / 100;
-
-        // ✅ Fetch user ID based on the email
         const user = await prisma.user.findUnique({
           where: { email: customerEmail },
           select: { id: true },
         });
 
         if (!user) {
-          return {
-            status: false,
-            message: "User not found. Cannot record payment.",
-            data: null,
-          };
+          throw new GraphQLError("User not found. Cannot record payment.", {
+            extensions: { code: "NOT_FOUND" },
+          });
         }
 
-        // ✅ Check if payment already exists
         const existingPayment = await prisma.payment.findUnique({
           where: { reference },
         });
@@ -66,17 +68,18 @@ export const paymentResolvers = {
           };
         }
 
-        // ✅ Store successful payment
         const newPayment = await prisma.payment.create({
           data: {
             userId: user.id,
             reference,
             email: customerEmail,
-            amount: convertedAmount,
+            amount,
             currency,
             status,
           },
         });
+
+        await logActivity(user.id, `Payment verified: ${reference} (${amount} ${currency})`, "Payment", newPayment.id);
 
         return {
           status: true,
@@ -85,55 +88,50 @@ export const paymentResolvers = {
         };
       } catch (error) {
         console.error("❌ Error verifying payment:", error);
-        return {
-          status: false,
-          message: "An error occurred during payment verification.",
-          data: null,
-        };
+        if (error instanceof GraphQLError) throw error;
+        throw new GraphQLError(
+          error instanceof Error ? error.message : "An error occurred during payment verification.",
+          { extensions: { code: "INTERNAL_SERVER_ERROR" } }
+        );
       }
     },
   },
 
   Mutation: {
-    initializePayment: async (_: any, { email, amount }: { email: string; amount: number }) => {
+    initializePayment: async (_: any, { email, amount }: { email: string; amount: number }, context: Context) => {
       try {
-        if (amount <= 0) {
-          return {
-            status: false,
-            message: "Invalid payment amount. Must be greater than zero.",
-            data: null,
-          };
+        if (!context.user) {
+          throw new GraphQLError("Unauthorized", { extensions: { code: "UNAUTHORIZED" } });
         }
 
-        // ✅ Convert NGN to Kobo before sending to Paystack
-        const amountInKobo = amount * 100;
+        const response = await initializePayment(email.toLowerCase().trim(), amount);
 
-        const response = await initializePayment(email.toLowerCase().trim(), amountInKobo);
-
-        if (!response?.status) {
-          return {
-            status: false,
-            message: "Failed to initialize payment. Please try again.",
-            data: null,
-          };
+        if (!response.status || !response.data) {
+          throw new GraphQLError(response.message || "Failed to initialize payment.", {
+            extensions: { code: "BAD_REQUEST" },
+          });
         }
+
+        const { authorization_url, access_code, reference } = response.data; // Safe after check
+
+        await logActivity(context.user.id, `Initialized payment: ${reference} (${amount} NGN)`, "Payment", reference);
 
         return {
           status: true,
           message: "Payment initialized successfully.",
           data: {
-            authorization_url: response.data.authorization_url,
-            access_code: response.data.access_code,
-            reference: response.data.reference,
+            authorization_url,
+            access_code,
+            reference,
           },
         };
       } catch (error) {
         console.error("❌ Error initializing payment:", error);
-        return {
-          status: false,
-          message: "An error occurred while initializing payment.",
-          data: null,
-        };
+        if (error instanceof GraphQLError) throw error;
+        throw new GraphQLError(
+          error instanceof Error ? error.message : "An error occurred while initializing payment.",
+          { extensions: { code: "INTERNAL_SERVER_ERROR" } }
+        );
       }
     },
   },

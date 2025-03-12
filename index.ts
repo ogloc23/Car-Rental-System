@@ -2,7 +2,7 @@ import express, { Application } from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 import { ApolloServer } from "apollo-server-express";
-import { typeDefs } from "./src/graphql/merge.js";
+import { typeDefs } from "./src/graphql/merge.js"; // Updated extension
 import { resolvers } from "./src/graphql/merge.js";
 import { context } from "./src/graphql/context.js";
 import { PrismaClient } from "@prisma/client";
@@ -22,17 +22,17 @@ const prisma = new PrismaClient();
 
 // Initialize Express
 const app: Application = express();
-app.use(cors());
+app.use(cors({ origin: process.env.CORS_ORIGIN || "*" })); // Configurable origin
 app.use(express.json());
 app.use("/payment", paystackWebhook);
-app.use("/payment", paymentRoute)
+app.use("/payment", paymentRoute);
 
 // Initialize Apollo Server
 const server = new ApolloServer({
   typeDefs,
   resolvers,
   context,
-  introspection: true, // ✅ Allow introspection even in production
+  introspection: true,
   plugins: [ApolloServerPluginLandingPageGraphQLPlayground()],
   formatError: (error) => {
     console.error(`${purple}❌ GraphQL Error:${reset}`, error);
@@ -58,7 +58,6 @@ async function startServer() {
     const timestamp = new Date().toLocaleString();
     console.log(`${purple}✅ Connected to database at: ${timestamp}${reset}`);
 
-    // Start Express server
     const PORT = process.env.PORT || 4000;
     const serverURL = process.env.SERVER_URL || `http://localhost:${PORT}`;
 
@@ -66,11 +65,17 @@ async function startServer() {
       console.log(`${purple}🚀 Server running on: ${serverURL}/graphql${reset}`);
     });
 
+    // Graceful shutdown
+    process.on("SIGTERM", async () => {
+      console.log(`${purple}⏳ Shutting down...${reset}`);
+      await prisma.$disconnect();
+      process.exit(0);
+    });
   } catch (error) {
     console.error("🚨 Server failed to start:", error);
+    await prisma.$disconnect();
     process.exit(1);
   }
 }
 
-// Start the server
 startServer();

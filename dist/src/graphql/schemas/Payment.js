@@ -1,38 +1,40 @@
-import { gql } from "apollo-server-express";
+import { gql } from "graphql-tag";
 export const paymentTypeDefs = gql `
+  type Payment {
+    id: ID!
+    userId: ID!
+    reference: String!
+    email: String!
+    amount: Float!
+    currency: String!
+    status: String!
+    createdAt: String!
+    updatedAt: String!
+  }
+
   type PaymentResponse {
-    status: Boolean
-    message: String
-    data: PaymentData
+    status: Boolean!
+    message: String!
+    data: Payment
   }
 
-  type PaymentData {
-    authorization_url: String
-    access_code: String
-    reference: String
-    amount: Float
-    currency: String
-    status: String
-    paid_at: String
-    created_at: String
-    gateway_response: String
-    channel: String
-    ip_address: String
-    customer: Customer
+  type PaymentInitializationResponse {
+    status: Boolean!
+    message: String!
+    data: PaymentInitializationData
   }
 
-  type Customer {
-    id: ID
-    fullName: String
-    email: String
-    phoneNumber: String
-  } 
+  type PaymentInitializationData {
+    authorization_url: String!
+    access_code: String!
+    reference: String!
+  }
 
   type Query {
-    verifyPayment(reference: String!): PaymentResponse
+    verifyPayment(reference: String!): PaymentResponse!
   }
 
   type Mutation {
-    initializePayment(email: String!, amount: Float!): PaymentResponse
+    initializePayment(email: String!, amount: Float!): PaymentInitializationResponse!
   }
 `;

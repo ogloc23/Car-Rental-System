@@ -1,14 +1,18 @@
 import { AuthenticationError } from "apollo-server-errors";
+import { Context } from "../types/types.js"; // Adjust path to your Context type
 
 export const handleAuthorization = (
-  user: { role: string } | null | undefined, 
-  requiredRole: string | null = null
+  context: Context,
+  requiredRoles: string[] | string | null = null
 ) => {
-  if (!user) {
+  if (!context.user) {
     throw new AuthenticationError("Unauthorized. Please log in.");
   }
 
-  if (requiredRole && user.role !== requiredRole) {
-    throw new AuthenticationError(`Access denied. Only ${requiredRole}s allowed.`);
+  if (requiredRoles) {
+    const rolesArray = Array.isArray(requiredRoles) ? requiredRoles : [requiredRoles];
+    if (!rolesArray.includes(context.user.role)) {
+      throw new AuthenticationError(`Access denied. Requires one of: ${rolesArray.join(", ")}.`);
+    }
   }
 };

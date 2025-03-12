@@ -1,4 +1,5 @@
 import { PrismaClient } from "@prisma/client";
+import { GraphQLError } from "graphql";
 const prisma = new PrismaClient();
 export const countResolvers = {
     Query: {
@@ -14,7 +15,10 @@ export const countResolvers = {
                 };
             }
             catch (error) {
-                throw new Error("Failed to fetch dashboard statistics");
+                console.error("❌ Error fetching dashboard stats:", error);
+                throw new GraphQLError("Failed to fetch dashboard statistics", {
+                    extensions: { code: "INTERNAL_SERVER_ERROR" },
+                });
             }
         },
     },

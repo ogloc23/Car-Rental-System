@@ -6,6 +6,17 @@ import { PrismaClient } from "@prisma/client";
 const router = express.Router();
 const prisma = new PrismaClient();
 
+async function logActivity(userId: string, action: string, resourceType?: string, resourceId?: string) {
+  await prisma.activityLog.create({
+    data: {
+      userId,
+      action,
+      resourceType,
+      resourceId,
+    },
+  });
+}
+
 router.post("/webhook", express.json(), async (req, res) => {
   try {
     const secret = process.env.PAYSTACK_SECRET_KEY;
@@ -15,7 +26,6 @@ router.post("/webhook", express.json(), async (req, res) => {
       return res.status(500).json({ message: "Server configuration error." });
     }
 
-    // Validate Paystack signature
     const hash = crypto
       .createHmac("sha512", secret)
       .update(JSON.stringify(req.body))
@@ -32,39 +42,72 @@ router.post("/webhook", express.json(), async (req, res) => {
       console.log("🔄 Verifying payment with reference:", data.reference);
       const payment = await verifyPayment(data.reference);
 
-      if (!payment?.status) {
-        console.warn("⚠️ Payment verification failed:", payment?.message);
-        return res.status(400).json({ message: "Payment verification failed." });
+      if (!payment.status || !payment.data) {
+        console.warn("⚠️ Payment verification failed:", payment.message);
+        return res.status(400).json({ message: payment.message || "Payment verification failed." });
       }
 
-      console.log("✅ Payment Verified:", payment);
+      const { amount, status, currency, customer } = payment.data; // Safe after check
+      const customerEmail = customer?.email?.toLowerCase().trim();
+      const amountInNaira = amount; // Already in Naira from paystack.ts
 
-      // Convert amount from Kobo to Naira
-      const amountInNaira = payment.data.amount / 100;
-      console.log(`✅ Payment Amount: ₦${amountInNaira}`);
+      if (!customerEmail) {
+        console.warn("⚠️ No customer email in payment data.");
+        return res.status(400).json({ message: "No customer email provided." });
+      }
 
-      // Handle different payment statuses
-      if (payment.data.status === "success") {
-        await prisma.payment.update({
-          where: { reference: data.reference },
-          data: { status: "success", amount: amountInNaira },
+      const user = await prisma.user.findUnique({
+        where: { email: customerEmail },
+        select: { id: true },
+      });
+
+      if (!user) {
+        console.warn("⚠️ User not found for email:", customerEmail);
+        return res.status(400).json({ message: "User not found." });
+      }
+
+      let paymentRecord = await prisma.payment.findUnique({
+        where: { reference: data.reference },
+      });
+
+      if (!paymentRecord) {
+        paymentRecord = await prisma.payment.create({
+          data: {
+            userId: user.id,
+            reference: data.reference,
+            email: customerEmail,
+            amount: amountInNaira,
+            currency,
+            status,
+          },
         });
-        console.log("✅ Payment status updated to SUCCESS.");
-      } else if (payment.data.status === "failed") {
-        await prisma.payment.update({
+        console.log("✅ Created new payment record:", paymentRecord);
+      } else {
+        paymentRecord = await prisma.payment.update({
           where: { reference: data.reference },
-          data: { status: "failed" },
+          data: { status, amount: amountInNaira },
         });
+        console.log("✅ Updated payment status to:", status);
+      }
+
+      if (status === "success") {
+        await logActivity(
+          user.id,
+          `Payment confirmed via webhook: ${data.reference} (${amountInNaira} ${currency})`,
+          "Payment",
+          paymentRecord.id
+        );
+      } else if (status === "failed") {
         console.warn("❌ Payment status updated to FAILED.");
-      } else if (payment.data.status === "ongoing") {
-        console.log("⌛ Payment is still ongoing. No update to database.");
+      } else {
+        console.log("⌛ Payment status:", status, "- No further action.");
       }
     }
 
     res.sendStatus(200);
   } catch (error) {
     console.error("❌ Error handling Paystack webhook:", error);
-    res.status(500).json({ message: "Internal server error." });
+    res.status(500).json({ message: error instanceof Error ? error.message : "Internal server error." });
   }
 });
 

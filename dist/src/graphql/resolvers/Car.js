@@ -1,6 +1,18 @@
 import { PrismaClient, CarStatus } from "@prisma/client";
 import { adminOrStaffMiddleware } from "../../middleware/adminOrStaffMiddleware.js";
+import { GraphQLError } from "graphql";
 const prisma = new PrismaClient();
+// Centralized activity logging helper (copied from User.ts)
+async function logActivity(userId, action, resourceType, resourceId) {
+    await prisma.activityLog.create({
+        data: {
+            userId,
+            action,
+            resourceType,
+            resourceId,
+        },
+    });
+}
 export const carResolvers = {
     Query: {
         getCars: async () => {
@@ -9,33 +21,38 @@ export const carResolvers = {
             }
             catch (error) {
                 console.error("Error fetching cars:", error);
-                throw new Error("Failed to fetch cars.");
+                throw new GraphQLError("Failed to fetch cars.", { extensions: { code: "INTERNAL_SERVER_ERROR" } });
             }
         },
         getCar: async (_parent, { id }) => {
             try {
                 const car = await prisma.car.findUnique({ where: { id } });
                 if (!car)
-                    throw new Error("Car not found");
+                    throw new GraphQLError("Car not found", { extensions: { code: "NOT_FOUND" } });
                 return car;
             }
             catch (error) {
                 console.error("Error fetching car:", error);
-                throw new Error("Failed to fetch car.");
+                throw new GraphQLError("Failed to fetch car.", { extensions: { code: "INTERNAL_SERVER_ERROR" } });
             }
         },
     },
     Mutation: {
-        addCar: async (_parent, { make, model, year, licensePlate, type, price, availability, carStatus, imageUrl, description, // ✅ Added description field
-         }, context) => {
-            adminOrStaffMiddleware(context); // ✅ Allow both admins and staff to add cars
+        addCar: async (_parent, { make, model, year, licensePlate, type, price, availability, carStatus, imageUrl, description, }, context) => {
+            await adminOrStaffMiddleware(context); // Ensures context.user exists
+            // Type guard for TypeScript (though middleware guarantees context.user)
+            if (!context.user) {
+                throw new GraphQLError("Unexpected error: User not authenticated after middleware.", {
+                    extensions: { code: "INTERNAL_SERVER_ERROR" },
+                });
+            }
             try {
-                // Check if a car with the same license plate already exists
                 const existingCar = await prisma.car.findUnique({ where: { licensePlate } });
                 if (existingCar) {
-                    throw new Error("A car with this license plate already exists.");
+                    throw new GraphQLError("A car with this license plate already exists.", {
+                        extensions: { code: "BAD_REQUEST" },
+                    });
                 }
-                // Define the data explicitly
                 const carData = {
                     make,
                     model,
@@ -46,47 +63,76 @@ export const carResolvers = {
                     availability,
                     carStatus: CarStatus[carStatus],
                     imageUrl: imageUrl ?? null,
-                    description, // ✅ Include description in the data
+                    description,
                 };
-                return await prisma.car.create({ data: carData });
+                const car = await prisma.car.create({ data: carData });
+                // Log the action
+                await logActivity(context.user.id, `Added car: ${make} ${model}`, "Car", car.id);
+                return car;
             }
             catch (error) {
                 console.error("Error adding car:", error);
-                throw new Error("Failed to add car. Please try again.");
+                throw new GraphQLError("Failed to add car. Please try again.", {
+                    extensions: { code: "INTERNAL_SERVER_ERROR" },
+                });
             }
         },
         updateCar: async (_parent, { id, carStatus, description, ...updates }, context) => {
-            adminOrStaffMiddleware(context); // ✅ Allow both admins and staff to update cars
+            await adminOrStaffMiddleware(context); // Ensures context.user exists
+            if (!context.user) {
+                throw new GraphQLError("Unexpected error: User not authenticated after middleware.", {
+                    extensions: { code: "INTERNAL_SERVER_ERROR" },
+                });
+            }
             try {
                 const existingCar = await prisma.car.findUnique({ where: { id } });
-                if (!existingCar)
-                    throw new Error("Car not found");
-                return await prisma.car.update({
+                if (!existingCar) {
+                    throw new GraphQLError("Car not found", { extensions: { code: "NOT_FOUND" } });
+                }
+                const updatedCar = await prisma.car.update({
                     where: { id },
                     data: {
                         ...updates,
                         ...(carStatus ? { carStatus: CarStatus[carStatus] } : {}),
-                        ...(description ? { description } : {}), // ✅ Ensure description is included in updates
+                        ...(description ? { description } : {}),
                         updatedAt: new Date(),
                     },
                 });
+                // Log the action (only if status or description changes, for example)
+                if (carStatus || description) {
+                    await logActivity(context.user.id, `Updated car: ${existingCar.make} ${existingCar.model} (Status: ${carStatus || existingCar.carStatus})`, "Car", id);
+                }
+                return updatedCar;
             }
             catch (error) {
                 console.error("Error updating car:", error);
-                throw new Error("Failed to update car. Please try again.");
+                throw new GraphQLError("Failed to update car. Please try again.", {
+                    extensions: { code: "INTERNAL_SERVER_ERROR" },
+                });
             }
         },
         deleteCar: async (_parent, { id }, context) => {
-            adminOrStaffMiddleware(context); // ✅ Allow both admins and staff to delete cars
+            await adminOrStaffMiddleware(context); // Ensures context.user exists
+            if (!context.user) {
+                throw new GraphQLError("Unexpected error: User not authenticated after middleware.", {
+                    extensions: { code: "INTERNAL_SERVER_ERROR" },
+                });
+            }
             try {
                 const existingCar = await prisma.car.findUnique({ where: { id } });
-                if (!existingCar)
-                    throw new Error("Car not found");
-                return await prisma.car.delete({ where: { id } });
+                if (!existingCar) {
+                    throw new GraphQLError("Car not found", { extensions: { code: "NOT_FOUND" } });
+                }
+                const deletedCar = await prisma.car.delete({ where: { id } });
+                // Log the action
+                await logActivity(context.user.id, `Deleted car: ${existingCar.make} ${existingCar.model}`, "Car", id);
+                return deletedCar;
             }
             catch (error) {
                 console.error("Error deleting car:", error);
-                throw new Error("Failed to delete car. Please try again.");
+                throw new GraphQLError("Failed to delete car. Please try again.", {
+                    extensions: { code: "INTERNAL_SERVER_ERROR" },
+                });
             }
         },
     },

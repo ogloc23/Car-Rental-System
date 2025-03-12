@@ -15,6 +15,9 @@ export const userTypeDefs = gql`
     address: String
     driversLicense: String!
     role: Role!
+    verified: Boolean!          # Added to match schema.prisma
+    verificationCode: String    # Added (nullable)
+    verificationCodeExpires: String # Added (nullable)
     createdAt: String!
     updatedAt: String!
   }
@@ -24,11 +27,25 @@ export const userTypeDefs = gql`
     token: String!
   }
 
+  type ActivityLog {
+    id: ID!
+    userId: ID!
+    action: String!
+    resourceType: String
+    resourceId: String
+    createdAt: String!          # Changed from timestamp to match schema.prisma
+  }
+
+  type MessageResponse {
+    message: String!
+  }
+
   type Query {
     me: User
     getUsers: [User!]!
     getStaff(id: ID!): User
-    getStaffs: [User!]!  # ✅ Added query to fetch all staff members
+    getStaffs: [User!]!
+    getUserActivity(userId: ID!): [ActivityLog!]!
   }
 
   type Mutation {
@@ -39,7 +56,7 @@ export const userTypeDefs = gql`
       address: String
       driversLicense: String!
       password: String!
-      isAdmin: Boolean
+      role: Role
     ): AuthPayload!
 
     registerAdmin(
@@ -49,7 +66,7 @@ export const userTypeDefs = gql`
       address: String
       driversLicense: String!
       password: String!
-    ): AuthPayload!  # ✅ Added registerAdmin mutation
+    ): AuthPayload!
 
     registerStaff(
       fullName: String!
@@ -58,10 +75,11 @@ export const userTypeDefs = gql`
       address: String
       driversLicense: String!
       password: String!
-    ): User!  # ✅ Added registerStaff mutation
+    ): User!
 
     login(email: String!, password: String!): AuthPayload!
-    verifyEmail(code: String!): Boolean!
+    resetPassword(email: String!, newPassword: String!, code: String!): String!
+    verifyEmail(email: String!, code: String!): MessageResponse!
     deleteStaff(id: ID!): String!
   }
 `;

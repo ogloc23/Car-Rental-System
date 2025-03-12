@@ -15,17 +15,18 @@ model User {
   address                 String?
   driversLicense          String    @unique
   password                String
+  passwordUpdatedAt       DateTime  @default(now()) // Track password update date
   verified                Boolean   @default(false)
-  verificationCode        String?   // 4-digit verification code
+  verificationCode        String? // 4-digit verification code
   verificationCodeExpires DateTime? // Expiry timestamp for the code
   createdAt               DateTime  @default(now())
   updatedAt               DateTime  @updatedAt
   role                    Role      @default(USER)
 
-
   // Relationships
-  bookings       Booking[]
-  payments       Payment[]
+  bookings     Booking[]
+  payments     Payment[]
+  activityLogs ActivityLog[] // ✅ Add this line to establish the relation
 }
 
 model Car {
@@ -35,16 +36,16 @@ model Car {
   year         Int
   licensePlate String    @unique
   type         String
-  price        Decimal   @db.Decimal(10,2)  // 💰 Improved precision
+  price        Decimal   @db.Decimal(10, 2) // 💰 Improved precision
   availability Boolean   @default(true)
   description  String
-  carStatus    CarStatus @default(AVAILABLE) 
-  imageUrl     String?   // Stores the car image URL
+  carStatus    CarStatus @default(AVAILABLE)
+  imageUrl     String? // Stores the car image URL
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
   // Relationships
-  bookings     Booking[]
+  bookings Booking[]
 
   @@index([make, model])
 }
@@ -55,7 +56,7 @@ model Booking {
   carId           String
   startDate       DateTime
   endDate         DateTime
-  totalPrice      Decimal       @default(0.0) @db.Decimal(10,2) // 💰 Improved precision
+  totalPrice      Decimal       @default(0.0) @db.Decimal(10, 2) // 💰 Improved precision
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
   dropoffLocation String
@@ -63,28 +64,28 @@ model Booking {
   status          BookingStatus @default(PENDING)
 
   // Relationships
-  car             Car   @relation(fields: [carId], references: [id])
-  user            User  @relation(fields: [userId], references: [id], onDelete: Cascade)
-  payments        Payment[]
+  car      Car       @relation(fields: [carId], references: [id])
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  payments Payment[]
 
   @@unique([carId, startDate, endDate])
   @@index([userId, status])
 }
 
 model Payment {
-  id         String   @id @default(uuid())
-  userId     String
-  bookingId  String?
-  reference  String   @unique
-  email      String
-  amount     Decimal  @db.Decimal(10,2)  // 💰 Improved precision
-  currency   String
-  status     String
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt  
+  id        String   @id @default(uuid())
+  userId    String
+  bookingId String?
+  reference String   @unique
+  email     String
+  amount    Decimal  @db.Decimal(10, 2) // 💰 Improved precision
+  currency  String
+  status    String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // Relationships
-  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   booking Booking? @relation(fields: [bookingId], references: [id], onDelete: SetNull)
 
   @@index([userId, status])
@@ -110,4 +111,14 @@ enum BookingStatus {
   CONFIRMED
   CANCELED
   COMPLETED
+}
+
+model ActivityLog {
+  id           String   @id @default(uuid())
+  userId       String
+  action       String
+  resourceType String? // Optional: e.g., "User", "Booking", "Car"
+  resourceId   String? // Optional: ID of the affected resource
+  createdAt    DateTime @default(now())
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }

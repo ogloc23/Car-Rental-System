@@ -1,33 +1,27 @@
 import axios from "axios";
 import dotenv from "dotenv";
+import { GraphQLError } from "graphql";
 dotenv.config();
 const PAYSTACK_SECRET_KEY = process.env.PAYSTACK_SECRET_KEY;
 const PAYSTACK_CALLBACK_URL = process.env.PAYSTACK_CALLBACK_URL;
 const PAYSTACK_API_URL = "https://api.paystack.co";
-// ✅ Validate environment variables at runtime
 if (!PAYSTACK_SECRET_KEY) {
     throw new Error("❌ Missing PAYSTACK_SECRET_KEY in environment variables.");
 }
 if (!PAYSTACK_CALLBACK_URL) {
     throw new Error("❌ Missing PAYSTACK_CALLBACK_URL in environment variables.");
 }
-// ✅ Set up headers for API requests
 const HEADERS = {
     Authorization: `Bearer ${PAYSTACK_SECRET_KEY}`,
     "Content-Type": "application/json",
 };
-/**
- * ✅ Initialize a payment with Paystack.
- * @param email - Customer's email address.
- * @param amount - Amount in Naira (NGN).
- * @returns PaystackResponse
- */
 export const initializePayment = async (email, amount) => {
     try {
         if (amount <= 0) {
-            throw new Error("❌ Invalid payment amount. Must be greater than zero.");
+            throw new GraphQLError("Invalid payment amount. Must be greater than zero.", {
+                extensions: { code: "BAD_REQUEST" },
+            });
         }
-        // ✅ Convert NGN to Kobo before sending to Paystack
         const amountInKobo = amount * 100;
         const response = await axios.post(`${PAYSTACK_API_URL}/transaction/initialize`, {
             email,
@@ -35,32 +29,42 @@ export const initializePayment = async (email, amount) => {
             currency: "NGN",
             callback_url: PAYSTACK_CALLBACK_URL,
         }, { headers: HEADERS });
+        if (!response.data.status) {
+            throw new GraphQLError(response.data.message || "Payment initialization failed.", {
+                extensions: { code: "BAD_REQUEST" },
+            });
+        }
         return response.data;
     }
     catch (error) {
         console.error("❌ Paystack API Error (Initialize Payment):", axios.isAxiosError(error) ? error.response?.data || error.message : error);
-        throw new Error("Payment initialization failed. Please try again.");
+        if (error instanceof GraphQLError)
+            throw error;
+        throw new GraphQLError(axios.isAxiosError(error) ? error.response?.data?.message || "Payment initialization failed." : "Payment initialization failed.", { extensions: { code: "INTERNAL_SERVER_ERROR" } });
     }
 };
-/**
- * ✅ Verify a payment transaction on Paystack.
- * @param reference - The payment reference.
- * @returns PaystackResponse
- */
 export const verifyPayment = async (reference) => {
     try {
+        if (!reference) {
+            throw new GraphQLError("Payment reference is required.", {
+                extensions: { code: "BAD_REQUEST" },
+            });
+        }
         const response = await axios.get(`${PAYSTACK_API_URL}/transaction/verify/${reference}`, { headers: HEADERS });
         if (!response.data?.status) {
-            throw new Error("❌ Payment verification failed at Paystack.");
+            throw new GraphQLError(response.data.message || "Payment verification failed at Paystack.", {
+                extensions: { code: "BAD_REQUEST" },
+            });
         }
-        // ✅ Convert amount from Kobo to Naira before returning
         if (response.data?.data?.amount) {
-            response.data.data.amount = response.data.data.amount / 100;
+            response.data.data.amount = response.data.data.amount / 100; // Kobo to Naira
         }
         return response.data;
     }
     catch (error) {
         console.error("❌ Paystack API Error (Verify Payment):", axios.isAxiosError(error) ? error.response?.data || error.message : error);
-        throw new Error("Payment verification failed. Please try again.");
+        if (error instanceof GraphQLError)
+            throw error;
+        throw new GraphQLError(axios.isAxiosError(error) ? error.response?.data?.message || "Payment verification failed." : "Payment verification failed.", { extensions: { code: "INTERNAL_SERVER_ERROR" } });
     }
 };

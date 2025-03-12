@@ -6,3 +6,10 @@ export interface Context {
   user?: { id: string; role: string };
   prisma: PrismaClient;
 }
+
+export interface DecodedToken {
+  id: string;
+  role: string;
+  iat?: number;
+  exp?: number;
+}
