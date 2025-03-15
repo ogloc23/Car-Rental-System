@@ -215,7 +215,7 @@ export const userResolvers = {
       if (!validator.isEmail(args.email)) {
         throw new GraphQLError("Invalid email format.", { extensions: { code: "BAD_REQUEST" } });
       }
-
+    
       const existingUser = await prisma.user.findFirst({
         where: {
           OR: [{ email: args.email }, { phoneNumber: args.phoneNumber }, { driversLicense: args.driversLicense }],
@@ -226,38 +226,57 @@ export const userResolvers = {
           extensions: { code: "BAD_REQUEST" },
         });
       }
-
+    
       if (!validator.isStrongPassword(args.password, { minLength: 8, minNumbers: 1, minUppercase: 1, minSymbols: 1 })) {
         throw new GraphQLError(
           "Password must be at least 8 characters long and include at least 1 number, 1 uppercase letter, and 1 special character.",
           { extensions: { code: "BAD_REQUEST" } }
         );
       }
-
+    
       const hashedPassword = await bcrypt.hash(args.password, 10);
-      let verificationCode: string | null = null;
       let verified: boolean = true;
-      let verificationCodeExpires: Date | null = null;
-
+    
       if (!args.role || args.role === "USER") {
-        verificationCode = Math.floor(1000 + Math.random() * 9000).toString();
-        verificationCodeExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
-        verified = false;
+        verified = false; // USER starts unverified, no code yet
       }
-
+    
       const user = await prisma.user.create({
         data: {
           ...args,
           password: hashedPassword,
           role: args.role || "USER",
           verified,
-          verificationCode,
-          verificationCodeExpires,
           passwordUpdatedAt: new Date(),
+          // No verificationCode or verificationCodeExpires here
         },
       });
+    
+      await logActivity(user.id, `New ${user.role} registered: ${user.email}`, "User", user.id);
+    
+      return { user };
+    },
 
-      if (!args.role || args.role === "USER") {
+    verifyEmail: async (_: any, { email, code }: VerifyEmailArgs) => {
+      if (!validator.isEmail(email)) {
+        throw new GraphQLError("Invalid email format.", { extensions: { code: "BAD_REQUEST" } });
+      }
+    
+      const user = await prisma.user.findUnique({ where: { email } });
+      if (!user) {
+        throw new GraphQLError("User not found or email does not match registered email.", { extensions: { code: "NOT_FOUND" } });
+      }
+    
+      // If no code provided, generate and send one
+      if (!code) {
+        const verificationCode = Math.floor(1000 + Math.random() * 9000).toString();
+        const verificationCodeExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+    
+        await prisma.user.update({
+          where: { email },
+          data: { verificationCode, verificationCodeExpires },
+        });
+    
         await sendEmail(
           user.email,
           "Your Verification Code",
@@ -265,39 +284,47 @@ export const userResolvers = {
           undefined,
           user.id
         );
+    
+        return { message: "Verification code sent to your email." };
       }
-
-      const token = jwt.sign({ id: user.id, role: user.role }, process.env.JWT_SECRET!, { expiresIn: "7d" });
-
-      await logActivity(user.id, `New ${user.role} registered: ${user.email}`, "User", user.id);
-
-      return { user, token };
+    
+      // If code provided, verify it
+      if (!user.verificationCode || user.verificationCode !== code || !user.verificationCodeExpires || new Date() > user.verificationCodeExpires) {
+        throw new GraphQLError("Invalid or expired verification code.", { extensions: { code: "BAD_REQUEST" } });
+      }
+    
+      await prisma.user.update({
+        where: { email },
+        data: { verified: true, verificationCode: null, verificationCodeExpires: null },
+      });
+    
+      await logActivity(user.id, "Email verified", "User", user.id);
+    
+      return { message: "Email verified successfully. You can now log in." };
     },
 
     login: async (_: any, { email, password }: LoginArgs) => {
       if (!validator.isEmail(email)) {
         throw new GraphQLError("Invalid email format.", { extensions: { code: "BAD_REQUEST" } });
       }
-
+    
       const user = await prisma.user.findUnique({ where: { email } });
       if (!user || !(await bcrypt.compare(password, user.password))) {
         throw new GraphQLError("Invalid email or password.", { extensions: { code: "UNAUTHORIZED" } });
       }
-
-      if (user.role === "USER" && !user.verified) {
-        throw new GraphQLError("Please verify your email before logging in.", { extensions: { code: "FORBIDDEN" } });
-      }
-
+    
+      // Removed verified check; moved to verifyEmail flow
+    
       const threeMonthsAgo = new Date();
       threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
       if (user.passwordUpdatedAt < threeMonthsAgo) {
         throw new GraphQLError("Your password has expired. Please reset it.", { extensions: { code: "FORBIDDEN" } });
       }
-
+    
       const token = jwt.sign({ id: user.id, role: user.role }, process.env.JWT_SECRET!, { expiresIn: "7d" });
-
+    
       await logActivity(user.id, `${user.role} logged in`, "User", user.id);
-
+    
       return { token, user };
     },
 
@@ -331,34 +358,6 @@ export const userResolvers = {
       await logActivity(user.id, "Password reset", "User", user.id);
 
       return "Password reset successful. You can now log in with your new password.";
-    },
-
-    verifyEmail: async (_: any, { email, code }: VerifyEmailArgs) => {
-      if (!validator.isEmail(email)) {
-        throw new GraphQLError("Invalid email format.", { extensions: { code: "BAD_REQUEST" } });
-      }
-
-      const user = await prisma.user.findUnique({ where: { email } });
-      if (!user) {
-        throw new GraphQLError("User not found.", { extensions: { code: "NOT_FOUND" } });
-      }
-
-      if (user.verified) {
-        throw new GraphQLError("Email already verified.", { extensions: { code: "BAD_REQUEST" } });
-      }
-
-      if (!user.verificationCode || user.verificationCode !== code || !user.verificationCodeExpires || new Date() > user.verificationCodeExpires) {
-        throw new GraphQLError("Invalid or expired verification code.", { extensions: { code: "BAD_REQUEST" } });
-      }
-
-      await prisma.user.update({
-        where: { email },
-        data: { verified: true, verificationCode: null, verificationCodeExpires: null },
-      });
-
-      await logActivity(user.id, "Email verified", "User", user.id);
-
-      return { message: "Email verified successfully." };
     },
 
     deleteStaff: async (_: any, { id }: { id: string }, context: Context) => {
