@@ -2,6 +2,7 @@ import { GraphQLError } from "graphql";
 import { PrismaClient } from "@prisma/client";
 import { Context } from "../../types/types.js";
 import { initializePayment, verifyPayment } from "../../services/paystack.js";
+import axios from 'axios';
 
 const prisma = new PrismaClient();
 
@@ -98,32 +99,67 @@ export const paymentResolvers = {
   },
 
   Mutation: {
-    initializePayment: async (_: any, { email, amount }: { email: string; amount: number }, context: Context) => {
+    initializePayment: async (_: any, { bookingId }: { bookingId: string }, context: Context) => {
       try {
+        // Check if user is authenticated
         if (!context.user) {
           throw new GraphQLError("Unauthorized", { extensions: { code: "UNAUTHORIZED" } });
         }
-
-        const response = await initializePayment(email.toLowerCase().trim(), amount);
-
-        if (!response.status || !response.data) {
-          throw new GraphQLError(response.message || "Failed to initialize payment.", {
+    
+        // Fetch booking details
+        const booking = await prisma.booking.findUnique({
+          where: { id: bookingId },
+          include: { user: true },
+        });
+        if (!booking) {
+          throw new GraphQLError("Booking not found.", { extensions: { code: "NOT_FOUND" } });
+        }
+        if (booking.userId !== context.user.id) {
+          throw new GraphQLError("You can only pay for your own bookings.", { extensions: { code: "FORBIDDEN" } });
+        }
+        if (booking.status !== "PENDING") {
+          throw new GraphQLError("Booking already processed.", { extensions: { code: "BAD_REQUEST" } });
+        }
+    
+        // Convert Prisma.Decimal to number
+        const totalPrice = booking.totalPrice.toNumber(); // Convert Decimal to number
+        const amountInKobo = totalPrice * 100; // Now works since totalPrice is a number
+    
+        // Prepare Paystack payment request
+        const paystackSecretKey = process.env.PAYSTACK_SECRET_KEY!;
+        const email = booking.user.email.toLowerCase().trim();
+        const callbackUrl = `${process.env.SERVER_URL}/payment/callback`;
+    
+        const response = await axios.post(
+          "https://api.paystack.co/transaction/initialize",
+          {
+            email,
+            amount: amountInKobo,
+            callback_url: callbackUrl,
+            metadata: { bookingId },
+          },
+          {
+            headers: {
+              Authorization: `Bearer ${paystackSecretKey}`,
+              "Content-Type": "application/json",
+            },
+          }
+        );
+    
+        if (!response.data.status || !response.data.data) {
+          throw new GraphQLError("Failed to initialize payment with Paystack.", {
             extensions: { code: "BAD_REQUEST" },
           });
         }
-
-        const { authorization_url, access_code, reference } = response.data; // Safe after check
-
-        await logActivity(context.user.id, `Initialized payment: ${reference} (${amount} NGN)`, "Payment", reference);
-
+    
+        const { authorization_url, reference } = response.data.data;
+    
+        // Log activity (use toString() for totalPrice in message to avoid type issues)
+        await logActivity(context.user.id, `Initialized payment: ${reference} (${booking.totalPrice.toString()} NGN)`, "Payment", reference);
+    
         return {
-          status: true,
-          message: "Payment initialized successfully.",
-          data: {
-            authorization_url,
-            access_code,
-            reference,
-          },
+          paymentUrl: authorization_url,
+          reference,
         };
       } catch (error) {
         console.error("❌ Error initializing payment:", error);

@@ -20,15 +20,8 @@ export const paymentTypeDefs = gql`
   }
 
   type PaymentInitializationResponse {
-    status: Boolean!
-    message: String!
-    data: PaymentInitializationData
-  }
-
-  type PaymentInitializationData {
-    authorization_url: String!
-    access_code: String!
-    reference: String!
+    paymentUrl: String!  # Renamed from authorization_url for clarity
+    reference: String!   # Matches Paystack's reference
   }
 
   type Query {
@@ -36,6 +29,6 @@ export const paymentTypeDefs = gql`
   }
 
   type Mutation {
-    initializePayment(email: String!, amount: Float!): PaymentInitializationResponse!
+    initializePayment(bookingId: ID!): PaymentInitializationResponse!
   }
 `;
