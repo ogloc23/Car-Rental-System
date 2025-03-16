@@ -6,6 +6,7 @@ import { Context } from "../../types/types.js";
 import { adminMiddleware } from "../../middleware/adminMiddleware.js";
 import { adminOrStaffMiddleware } from "../../middleware/adminOrStaffMiddleware.js";
 import { sendEmail } from "../../utils/emailService.js";
+import nodemailer from 'nodemailer';
 import validator from "validator";
 
 const prisma = new PrismaClient();
@@ -257,51 +258,69 @@ export const userResolvers = {
       return { user };
     },
 
-    verifyEmail: async (_: any, { email, code }: VerifyEmailArgs) => {
-      if (!validator.isEmail(email)) {
-        throw new GraphQLError("Invalid email format.", { extensions: { code: "BAD_REQUEST" } });
-      }
-    
-      const user = await prisma.user.findUnique({ where: { email } });
-      if (!user) {
-        throw new GraphQLError("User not found or email does not match registered email.", { extensions: { code: "NOT_FOUND" } });
-      }
-    
-      // If no code provided, generate and send one
-      if (!code) {
+    sendVerificationEmail: async (_: any, { email }: { email: string }, context: Context) => {
+      try {
+        const user = await context.prisma.user.findUnique({ where: { email: email.toLowerCase().trim() } });
+        if (!user) throw new GraphQLError("User not found.", { extensions: { code: "NOT_FOUND" } });
+        if (user.verified) throw new GraphQLError("Email already verified.", { extensions: { code: "BAD_REQUEST" } });
+
         const verificationCode = Math.floor(1000 + Math.random() * 9000).toString();
-        const verificationCodeExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
-    
-        await prisma.user.update({
+        await context.prisma.user.update({
           where: { email },
-          data: { verificationCode, verificationCodeExpires },
+          data: { verificationCode, verificationCodeExpires: new Date(Date.now() + 10 * 60 * 1000) },
         });
-    
+
         await sendEmail(
-          user.email,
-          "Your Verification Code",
-          `Your code: ${verificationCode} (expires in 10 minutes)`,
+          email,
+          "Verify Your Email",
+          `Your verification code is: ${verificationCode}. Expires in 10 minutes.`,
           undefined,
           user.id
         );
-    
+
         return { message: "Verification code sent to your email." };
+      } catch (error) {
+        let errorMessage = "Unknown error occurred";
+        if (error instanceof Error) {
+          errorMessage = error.message;
+        }
+        console.error("❌ Send verification email error:", error);
+        throw new GraphQLError("Failed to send verification email.", {
+          extensions: { code: "INTERNAL_SERVER_ERROR", details: errorMessage },
+        });
       }
-    
-      // If code provided, verify it
-      if (!user.verificationCode || user.verificationCode !== code || !user.verificationCodeExpires || new Date() > user.verificationCodeExpires) {
-        throw new GraphQLError("Invalid or expired verification code.", { extensions: { code: "BAD_REQUEST" } });
-      }
-    
-      await prisma.user.update({
-        where: { email },
-        data: { verified: true, verificationCode: null, verificationCodeExpires: null },
-      });
-    
-      await logActivity(user.id, "Email verified", "User", user.id);
-    
-      return { message: "Email verified successfully. You can now log in." };
     },
+
+    verifyEmail: async (_: any, { email, code }: { email: string; code: string }, context: Context) => {
+      try {
+        const user = await context.prisma.user.findUnique({ where: { email: email.toLowerCase().trim() } });
+        if (!user) throw new GraphQLError("User not found.", { extensions: { code: "NOT_FOUND" } });
+        if (user.verified) throw new GraphQLError("Email already verified.", { extensions: { code: "BAD_REQUEST" } });
+
+        if (!user.verificationCode || user.verificationCode !== code || !user.verificationCodeExpires || new Date() > user.verificationCodeExpires) {
+          throw new GraphQLError("Invalid or expired verification code.", { extensions: { code: "BAD_REQUEST" } });
+        }
+
+        await context.prisma.user.update({
+          where: { email },
+          data: { verified: true, verificationCode: null, verificationCodeExpires: null },
+        });
+
+        await logActivity(user.id, "Email verified", "User", user.id); // Assuming logActivity is defined
+
+        return { message: "Email verified successfully." };
+      } catch (error) {
+        let errorMessage = "Unknown error occurred";
+        if (error instanceof Error) {
+          errorMessage = error.message;
+        }
+        console.error("❌ Verify email error:", error);
+        throw new GraphQLError("Failed to verify email.", {
+          extensions: { code: "INTERNAL_SERVER_ERROR", details: errorMessage },
+        });
+      }
+    },
+    
 
     login: async (_: any, { email, password }: LoginArgs) => {
       if (!validator.isEmail(email)) {

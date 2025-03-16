@@ -1,27 +1,35 @@
-import nodemailer from "nodemailer";
-import { GraphQLError } from "graphql";
-import { PrismaClient } from "@prisma/client";
+import nodemailer, { Transporter } from 'nodemailer';
+import { GraphQLError } from 'graphql';
+import { PrismaClient } from '@prisma/client';
 
+// Initialize Prisma client
 const prisma = new PrismaClient();
 
-const transporter = nodemailer.createTransport({
-  service: "Gmail",
+// Create Nodemailer transporter with explicit SMTP settings
+const transporter: Transporter = nodemailer.createTransport({
+  host: process.env.EMAIL_HOST, // e.g., smtp.gmail.com
+  port: parseInt(process.env.EMAIL_PORT || '587'), // Default to 587 (TLS)
+  secure: process.env.EMAIL_PORT === '465', // True for SSL (465), false for TLS (587)
   auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
+    user: process.env.EMAIL_USER, // e.g., vj1502003@gmail.com
+    pass: process.env.EMAIL_PASSWORD, // App-specific password
   },
 });
 
-// Centralized activity logging helper (optional)
+// Centralized activity logging helper
 async function logActivity(userId: string, action: string, resourceType?: string, resourceId?: string) {
-  await prisma.activityLog.create({
-    data: {
-      userId,
-      action,
-      resourceType,
-      resourceId,
-    },
-  });
+  try {
+    await prisma.activityLog.create({
+      data: {
+        userId,
+        action,
+        resourceType,
+        resourceId,
+      },
+    });
+  } catch (logError) {
+    console.error(`❌ Failed to log activity for user ${userId}:`, logError);
+  }
 }
 
 export const sendEmail = async (
@@ -30,9 +38,10 @@ export const sendEmail = async (
   text: string,
   html?: string,
   userId?: string // Optional for logging
-) => {
-  if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
-    console.error("❌ Email configuration missing: EMAIL_USER or EMAIL_PASS not set.");
+): Promise<void> => {
+  // Check for required environment variables
+  if (!process.env.EMAIL_HOST || !process.env.EMAIL_USER || !process.env.EMAIL_PASSWORD) {
+    console.error("❌ Email configuration missing: EMAIL_HOST, EMAIL_USER, or EMAIL_PASSWORD not set.");
     throw new GraphQLError("Email service configuration error.", {
       extensions: { code: "INTERNAL_SERVER_ERROR" },
     });
@@ -40,7 +49,7 @@ export const sendEmail = async (
 
   try {
     await transporter.sendMail({
-      from: `"Car Rental System" <${process.env.EMAIL_USER}>`, // Customized app name
+      from: process.env.EMAIL_FROM || `"Car Rental System" <${process.env.EMAIL_USER}>`, // Fallback to EMAIL_USER
       to,
       subject,
       text,
@@ -49,14 +58,19 @@ export const sendEmail = async (
 
     console.log(`✅ Email sent to ${to}`);
 
-    // Optional: Log email send if userId is provided
+    // Log activity if userId is provided
     if (userId) {
-      await logActivity(userId, `Email sent: ${subject}`, "Email", undefined);
+      await logActivity(userId, `Email sent: ${subject}`, "Email");
     }
   } catch (error) {
+    // Handle unknown error type with a type guard
+    let errorMessage = "Unknown error occurred";
+    if (error instanceof Error) {
+      errorMessage = error.message;
+    }
     console.error(`❌ Failed to send email to ${to}:`, error);
     throw new GraphQLError(`Failed to send email to ${to}.`, {
-      extensions: { code: "INTERNAL_SERVER_ERROR" },
+      extensions: { code: "INTERNAL_SERVER_ERROR", details: errorMessage },
     });
   }
 };

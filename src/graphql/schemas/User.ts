@@ -15,9 +15,9 @@ export const userTypeDefs = gql`
     address: String
     driversLicense: String!
     role: Role!
-    verified: Boolean!          # Added to match schema.prisma
-    verificationCode: String    # Added (nullable)
-    verificationCodeExpires: String # Added (nullable)
+    verified: Boolean!
+    verificationCode: String
+    verificationCodeExpires: String
     createdAt: String!
     updatedAt: String!
   }
@@ -33,7 +33,7 @@ export const userTypeDefs = gql`
     action: String!
     resourceType: String
     resourceId: String
-    createdAt: String!          # Changed from timestamp to match schema.prisma
+    createdAt: String!
   }
 
   type MessageResponse {
@@ -79,7 +79,8 @@ export const userTypeDefs = gql`
 
     login(email: String!, password: String!): AuthPayload!
     resetPassword(email: String!, newPassword: String!, code: String!): String!
-    verifyEmail(email: String!, code: String!): MessageResponse!
+    sendVerificationEmail(email: String!): MessageResponse! # New: Sends code
+    verifyEmail(email: String!, code: String!): MessageResponse! # Verifies code
     deleteStaff(id: ID!): String!
   }
 `;

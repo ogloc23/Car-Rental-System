@@ -1,45 +1,48 @@
-import express from "express";
-import { verifyPayment } from "../services/paystack.js";
-import { PrismaClient } from "@prisma/client";
+import express, { Request, Response } from 'express';
+import { verifyPayment } from '../services/paystack.js';
+import { PrismaClient } from '@prisma/client';
 
 const router = express.Router();
 const prisma = new PrismaClient();
 
-async function logActivity(userId: string, action: string, resourceType?: string, resourceId?: string) {
-  await prisma.activityLog.create({
-    data: {
-      userId,
-      action,
-      resourceType,
-      resourceId,
-    },
-  });
+// Log activity function (unchanged)
+async function logActivity(userId: string, action: string, resourceType?: string, resourceId?: string): Promise<void> {
+  try {
+    await prisma.activityLog.create({
+      data: { userId, action, resourceType, resourceId },
+    });
+  } catch (logError) {
+    console.error(`❌ Failed to log activity for user ${userId}:`, logError);
+  }
 }
 
-router.get("/callback", async (req, res) => {
-  const { reference } = req.query;
+// Handle payment callback at the root path
+router.get('/', async (req: Request, res: Response) => {
+  const { trxref, reference } = req.query;
 
-  if (!reference || typeof reference !== "string") {
-    return res.status(400).json({ status: false, message: "No reference provided." });
+  // Use reference if provided, fallback to trxref
+  const paymentRef = (reference || trxref) as string | undefined;
+
+  if (!paymentRef) {
+    return res.status(400).json({ status: false, message: 'No reference or trxref provided.' });
   }
 
   try {
-    const response = await verifyPayment(reference);
-
+    const response = await verifyPayment(paymentRef);
     if (!response.status || !response.data) {
       return res.status(400).json({
         status: false,
-        message: response.message || "Payment verification failed.",
+        message: response.message || 'Payment verification failed.',
       });
     }
 
-    const { amount, status, currency, customer, gateway_response } = response.data; // Safe after check
+    const { amount, status, currency, customer, gateway_response } = response.data;
     const customerEmail = customer?.email?.toLowerCase().trim();
 
     if (!customerEmail) {
       return res.status(400).json({
         status: false,
-        message: "Payment verification failed: No email found.",
+        message: 'Payment verification failed: No email found.',
       });
     }
 
@@ -51,53 +54,46 @@ router.get("/callback", async (req, res) => {
     if (!user) {
       return res.status(400).json({
         status: false,
-        message: "User not found. Cannot record payment.",
+        message: 'User not found. Cannot record payment.',
       });
     }
 
     const existingPayment = await prisma.payment.findUnique({
-      where: { reference },
+      where: { reference: paymentRef },
     });
 
     if (existingPayment) {
       return res.status(200).json({
         status: true,
-        message: "Payment already recorded.",
+        message: 'Payment already recorded.',
         data: existingPayment,
       });
     }
 
-    if (status !== "success") {
-      return res.status(400).json({
-        status: false,
-        message: `Payment failed: ${gateway_response || "Unknown reason"}.`,
-      });
+    if (status !== 'success') {
+      await logActivity(user.id, `Payment failed: ${paymentRef} (${gateway_response || 'Unknown reason'})`, 'Payment');
+      return res.redirect(`${process.env.SERVER_URL}/payment/failure`);
     }
 
     const newPayment = await prisma.payment.create({
       data: {
         userId: user.id,
-        reference,
+        reference: paymentRef,
         email: customerEmail,
-        amount,
+        amount: amount / 100, // Convert kobo/cents to main currency unit
         currency,
         status,
       },
     });
 
-    await logActivity(user.id, `Payment verified via callback: ${reference} (${amount} ${currency})`, "Payment", newPayment.id);
-
-    return res.status(200).json({
-      status: true,
-      message: "Payment successful!",
-      data: newPayment,
-    });
+    await logActivity(user.id, `Payment verified via callback: ${paymentRef} (${amount / 100} ${currency})`, 'Payment', newPayment.id);
+    return res.redirect(`${process.env.SERVER_URL}/payment/success`);
   } catch (error) {
-    console.error("❌ Error handling callback:", error);
-    return res.status(500).json({
-      status: false,
-      message: error instanceof Error ? error.message : "Internal server error.",
-    });
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    console.error('❌ Error handling callback:', error);
+    return res.redirect(`${process.env.SERVER_URL}/payment/failure`);
+  } finally {
+    await prisma.$disconnect(); // Ensure Prisma client disconnects
   }
 });
 

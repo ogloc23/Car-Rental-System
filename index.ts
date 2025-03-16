@@ -1,59 +1,57 @@
-import express, { Application } from "express";
-import cors from "cors";
-import dotenv from "dotenv";
-import { ApolloServer } from "apollo-server-express";
-import { typeDefs } from "./src/graphql/merge.js"; // Updated extension
-import { resolvers } from "./src/graphql/merge.js";
-import { context } from "./src/graphql/context.js";
-import { PrismaClient } from "@prisma/client";
-import paystackWebhook from "./src/routes/webhookRoute.js";
-import paymentRoute from "./src/routes/paymentRoute.js";
-import { ApolloServerPluginLandingPageGraphQLPlayground } from "apollo-server-core";
+import express from 'express';
+import cors from 'cors';
+import dotenv from 'dotenv';
+import { ApolloServer } from 'apollo-server-express';
+import { mergeTypeDefs } from '@graphql-tools/merge';
+import { makeExecutableSchema } from '@graphql-tools/schema';
+import { resolvers, typeDefs } from './src/graphql/merge.js';
+import { context } from './src/graphql/context.js';
+import paymentRoutes from './src/routes/paymentRoute.js';
+import webhookRoutes from './src/routes/webhookRoute.js';
+import { PrismaClient } from '@prisma/client';
+import { ApolloServerPluginLandingPageGraphQLPlayground } from 'apollo-server-core';
 
-// Load environment variables
 dotenv.config();
 
-// ANSI escape codes for colored logs
-const purple = "\x1b[35m";
-const reset = "\x1b[0m";
+const purple = '\x1b[35m';
+const reset = '\x1b[0m';
 
-// Initialize Prisma Client
 const prisma = new PrismaClient();
-
-// Initialize Express
-const app: Application = express();
-app.use(cors({ origin: process.env.CORS_ORIGIN || "*" })); // Configurable origin
+const app = express();
+app.use(cors({ origin: process.env.CORS_ORIGIN || '*' }));
 app.use(express.json());
-app.use("/payment", paystackWebhook);
-app.use("/payment", paymentRoute);
+app.use('/payment/callback', paymentRoutes);
+app.use('/payment/webhook', webhookRoutes);
 
-// Initialize Apollo Server
+const mergedTypeDefs = mergeTypeDefs(typeDefs);
+
+const schema = makeExecutableSchema({ typeDefs: mergedTypeDefs, resolvers });
+
 const server = new ApolloServer({
-  typeDefs,
-  resolvers,
+  schema,
   context,
   introspection: true,
   plugins: [ApolloServerPluginLandingPageGraphQLPlayground()],
+  cache: 'bounded', // Added
   formatError: (error) => {
-    console.error(`${purple}❌ GraphQL Error:${reset}`, error);
-    return {
+    console.error(`${purple}❌ GraphQL Error:${reset}`, {
       message: error.message,
       path: error.path,
       locations: error.locations,
       extensions: error.extensions,
-    };
+    });
+    return error;
   },
 });
 
-// Start Apollo Server
 async function startServer() {
   try {
-    console.log(`🚀 Running in ${process.env.NODE_ENV || "development"} mode`);
+    console.log(`🚀 Running in ${process.env.NODE_ENV || 'development'} mode`);
     console.log(`${purple}⏳ Connecting to database...${reset}`);
     await prisma.$connect();
 
     await server.start();
-    server.applyMiddleware({ app });
+    server.applyMiddleware({ app, path: '/graphql' });
 
     const timestamp = new Date().toLocaleString();
     console.log(`${purple}✅ Connected to database at: ${timestamp}${reset}`);
@@ -62,20 +60,34 @@ async function startServer() {
     const serverURL = process.env.SERVER_URL || `http://localhost:${PORT}`;
 
     app.listen(PORT, () => {
-      console.log(`${purple}🚀 Server running on: ${serverURL}/graphql${reset}`);
+      console.log(`${purple}🚀 Server running on: ${serverURL}${server.graphqlPath}${reset}`);
+      console.log(`${purple}🔗 Payment callback: ${serverURL}/payment/callback${reset}`);
+      console.log(`${purple}🔗 Payment webhook: ${serverURL}/payment/webhook${reset}`);
     });
 
-    // Graceful shutdown
-    process.on("SIGTERM", async () => {
+    process.on('SIGTERM', async () => {
       console.log(`${purple}⏳ Shutting down...${reset}`);
+      await server.stop();
       await prisma.$disconnect();
+      console.log(`${purple}✅ Server and database disconnected${reset}`);
+      process.exit(0);
+    });
+
+    process.on('SIGINT', async () => {
+      console.log(`${purple}⏳ Shutting down (Ctrl+C)...${reset}`);
+      await server.stop();
+      await prisma.$disconnect();
+      console.log(`${purple}✅ Server and database disconnected${reset}`);
       process.exit(0);
     });
   } catch (error) {
-    console.error("🚨 Server failed to start:", error);
+    console.error('🚨 Server failed to start:', error);
     await prisma.$disconnect();
     process.exit(1);
   }
 }
 
-startServer();
+startServer().catch((err) => {
+  console.error('🚨 Unhandled error in startServer:', err);
+  process.exit(1);
+});
