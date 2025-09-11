@@ -14,53 +14,40 @@ async function logActivity(userId, action, resourceType, resourceId) {
         console.error(`❌ Failed to log activity for user ${userId}:`, logError);
     }
 }
-// Handle payment callback at the root path
+// Handle payment callback
 router.get('/', async (req, res) => {
     const { trxref, reference } = req.query;
     // Use reference if provided, fallback to trxref
     const paymentRef = (reference || trxref);
     if (!paymentRef) {
-        return res.status(400).json({ status: false, message: 'No reference or trxref provided.' });
+        return res.redirect(`${process.env.SERVER_URL}/payment/failure?message=No%20reference%20or%20trxref%20provided`);
     }
     try {
         const response = await verifyPayment(paymentRef);
         if (!response.status || !response.data) {
-            return res.status(400).json({
-                status: false,
-                message: response.message || 'Payment verification failed.',
-            });
+            return res.redirect(`${process.env.SERVER_URL}/payment/failure?message=${encodeURIComponent(response.message || 'Payment verification failed')}`);
         }
         const { amount, status, currency, customer, gateway_response } = response.data;
         const customerEmail = customer?.email?.toLowerCase().trim();
         if (!customerEmail) {
-            return res.status(400).json({
-                status: false,
-                message: 'Payment verification failed: No email found.',
-            });
+            return res.redirect(`${process.env.SERVER_URL}/payment/failure?message=Payment%20verification%20failed:%20No%20email%20found`);
         }
         const user = await prisma.user.findUnique({
             where: { email: customerEmail },
             select: { id: true },
         });
         if (!user) {
-            return res.status(400).json({
-                status: false,
-                message: 'User not found. Cannot record payment.',
-            });
+            return res.redirect(`${process.env.SERVER_URL}/payment/failure?message=User%20not%20found`);
         }
         const existingPayment = await prisma.payment.findUnique({
             where: { reference: paymentRef },
         });
         if (existingPayment) {
-            return res.status(200).json({
-                status: true,
-                message: 'Payment already recorded.',
-                data: existingPayment,
-            });
+            return res.redirect(`${process.env.SERVER_URL}/payment/success?message=Payment%20already%20recorded`);
         }
         if (status !== 'success') {
             await logActivity(user.id, `Payment failed: ${paymentRef} (${gateway_response || 'Unknown reason'})`, 'Payment');
-            return res.redirect(`${process.env.SERVER_URL}/payment/failure`);
+            return res.redirect(`${process.env.SERVER_URL}/payment/failure?message=${encodeURIComponent(`Payment failed: ${gateway_response || 'Unknown reason'}`)}`);
         }
         const newPayment = await prisma.payment.create({
             data: {
@@ -73,12 +60,14 @@ router.get('/', async (req, res) => {
             },
         });
         await logActivity(user.id, `Payment verified via callback: ${paymentRef} (${amount / 100} ${currency})`, 'Payment', newPayment.id);
-        return res.redirect(`${process.env.SERVER_URL}/payment/success`);
+        // Redirect with custom success message
+        const successMessage = `Payment of ${amount / 100} ${currency} completed successfully!`;
+        return res.redirect(`${process.env.SERVER_URL}/payment/success?message=${encodeURIComponent(successMessage)}`);
     }
     catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
         console.error('❌ Error handling callback:', error);
-        return res.redirect(`${process.env.SERVER_URL}/payment/failure`);
+        return res.redirect(`${process.env.SERVER_URL}/payment/failure?message=${encodeURIComponent(`Internal server error: ${errorMessage}`)}`);
     }
     finally {
         await prisma.$disconnect(); // Ensure Prisma client disconnects

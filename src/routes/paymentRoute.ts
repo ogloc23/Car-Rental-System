@@ -1,5 +1,5 @@
 import express, { Request, Response } from 'express';
-import { verifyPayment } from '../services/paystack';
+import { verifyPayment } from '../services/paystack.js';
 import { PrismaClient } from '@prisma/client';
 
 const router = express.Router();

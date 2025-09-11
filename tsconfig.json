@@ -4,8 +4,8 @@
     "rootDir": ".",                
     "outDir": "./dist",            
     "target": "ESNext",            
-    "module": "ESNext",           // Change to "ESNext" for better compatibility with ES modules
-    "moduleResolution": "node",    
+    "module": "NodeNext",           // Change to "ESNext" for better compatibility with ES modules
+    "moduleResolution": "NodeNext",    
     "esModuleInterop": true,       
     "skipLibCheck": true,          
     "forceConsistentCasingInFileNames": true,
