@@ -1,4 +1,4 @@
-import { PrismaClient, Car, Prisma, CarStatus } from "@prisma/client";
+import { PrismaClient, Car, Prisma, CarStatus, Purchase, PurchaseStatus } from "@prisma/client";
 import { Context } from "../../types/types.js";
 import { adminOrStaffMiddleware } from "../../middleware/adminOrStaffMiddleware.js";
 import { GraphQLError } from "graphql";
@@ -38,6 +38,24 @@ export const carResolvers = {
         throw new GraphQLError("Failed to fetch car.", { extensions: { code: "INTERNAL_SERVER_ERROR" } });
       }
     },
+
+    purchases: async (_parent: unknown,{
+      status
+    }: {status?: PurchaseStatus }, 
+    context: Context
+  ) => {
+    await adminOrStaffMiddleware(context);
+    return await context.prisma.purchase.findMany({
+      where: status ? {
+        status
+      } : undefined,
+      orderBy: { createdAt: "desc" },
+      include: {
+        car: true,
+        user: true,
+      },
+    });
+  },
   },
 
   Mutation: {
@@ -110,6 +128,145 @@ export const carResolvers = {
           extensions: { code: "INTERNAL_SERVER_ERROR" },
         });
       }
+    },
+
+    buyCar: async ( _parent: unknown, {
+      carId, fullName, phoneNumber, email,
+    }: { 
+      carId: string, fullName: string, 
+      phoneNumber: string, email: string },
+    context: Context
+    ): Promise<Purchase> => {
+      if (!context.user) {
+        throw new GraphQLError("You must be logged in to purchase a car.", {
+          extensions: { code: "UNAUTHORIZED"},
+        });
+      }
+      try {
+        const car = await prisma.car.findUnique({
+          where: {
+            id: carId
+          }
+        });
+        if (!car) throw new GraphQLError("Car not found", {
+          extensions: { code: "NOT FOUND"}
+        });
+        if (car.carStatus != "AVAILABLE") {
+          throw new GraphQLError("Car is not available for purchase.", {
+            extensions: { code: "BAD_REQUEST"},
+          });
+        }
+
+        // Create the purchase
+        const purchase = await prisma.purchase.create({
+          data: {
+            userId: context.user.id,
+            carId,
+            fullName,
+            phoneNumber,
+            email,
+            price: car.price,
+            // createdAt: new Date()
+          },
+          include: {
+            car: true
+          },
+        });
+
+        //Mark the car as SOLD
+        await prisma.car.update({
+          where: { id: carId},
+          data: {
+            carStatus: CarStatus.SOLD, 
+            availability: false
+          },
+        });
+        return purchase;
+      } catch (error) {
+        console.error("Error buying car:", error);
+        throw new GraphQLError("Failed to buy car. Please try again.",{
+          extensions: { code: "INTERNAL_SERVER_ERROR"}
+        });
+      }
+    },  
+
+    approvePurchase: async (_parent: unknown,
+      {purchaseId}: { purchaseId: string },
+      context: Context
+    ) => {
+      await adminOrStaffMiddleware(context);
+      //1. Get the purchase + related car
+      const purchase = await context.prisma.purchase.findUnique({
+        where: { id: purchaseId },
+        include: { car: true },
+      });
+      if (!purchase) throw new GraphQLError("Purchase not found");
+
+      if (purchase.status !== PurchaseStatus.PENDING) {
+        throw new GraphQLError("Only pending purchases can be approved",{
+          extensions: { code: "BAD REQUEST" },
+        });
+      }
+
+      //2. Transaction to ensure atomic updates
+      const result = await context.prisma.$transaction(async (tx) => {
+        //Approve the selected purchase
+        const approvePurchase = await tx.purchase.update({
+          where: {id: purchaseId},
+          data: {
+            status: PurchaseStatus.CONFIRMED,
+            car: {
+              update: {
+                carStatus: CarStatus.SOLD,
+                availability: false,
+              },
+            },
+          },
+          include: { car: true },
+        });
+
+        //Reject all other pending purchases for the same car
+        await tx.purchase.updateMany({
+          where: {
+            carId: purchase.carId,
+            status: PurchaseStatus.PENDING,
+            NOT: {id: purchaseId},
+          },
+          data: {status: PurchaseStatus.CANCELED},
+        });
+        return approvePurchase;
+      });
+    },
+
+    rejectPurchase: async (_parent: unknown,
+      {purchaseId}: {purchaseId: string},
+      context: Context
+    ) => {
+      await adminOrStaffMiddleware(context);
+
+      const purchase = await context.prisma.purchase.findUnique({
+        where: {id: purchaseId},
+        include: {car: true},
+      });
+      if (!purchase) throw new GraphQLError("Purchase not found");
+      if (purchase.status !== PurchaseStatus.PENDING) {
+        throw new GraphQLError("Only pending purchases can be rejected",{
+          extensions: { code: "BAD REQUEST" },
+        });
+      }
+      return await context.prisma.purchase.update({
+        where: {id: purchaseId},
+        data: {
+          status: PurchaseStatus.CANCELED,
+          car: {
+            update: {
+              carStatus: CarStatus.AVAILABLE,
+              availability: true,
+            },
+          },
+        },
+        include: { car: true },
+      });
     },
 
     updateCar: async (

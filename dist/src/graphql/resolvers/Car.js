@@ -77,6 +77,59 @@ export const carResolvers = {
                 });
             }
         },
+        buyCar: async (_parent, { carId, fullName, phoneNumber, email, }, context) => {
+            if (!context.user) {
+                throw new GraphQLError("You must be logged in to purchase a car.", {
+                    extensions: { code: "UNAUTHORIZED" },
+                });
+            }
+            try {
+                const car = await prisma.car.findUnique({
+                    where: {
+                        id: carId
+                    }
+                });
+                if (!car)
+                    throw new GraphQLError("Car not found", {
+                        extensions: { code: "NOT FOUND" }
+                    });
+                if (car.carStatus != "AVAILABLE") {
+                    throw new GraphQLError("Car is not available for purchase.", {
+                        extensions: { code: "BAD_REQUEST" },
+                    });
+                }
+                // Create the purchase
+                const purchase = await prisma.purchase.create({
+                    data: {
+                        userId: context.user.id,
+                        carId,
+                        fullName,
+                        phoneNumber,
+                        email,
+                        price: car.price,
+                        // createdAt: new Date()
+                    },
+                    include: {
+                        car: true
+                    },
+                });
+                //Mark the car as SOLD
+                await prisma.car.update({
+                    where: { id: carId },
+                    data: {
+                        carStatus: CarStatus.SOLD,
+                        availability: false
+                    },
+                });
+                return purchase;
+            }
+            catch (error) {
+                console.error("Error buying car:", error);
+                throw new GraphQLError("Failed to buy car. Please try again.", {
+                    extensions: { code: "INTERNAL_SERVER_ERROR" }
+                });
+            }
+        },
         updateCar: async (_parent, { id, carStatus, description, ...updates }, context) => {
             await adminOrStaffMiddleware(context); // Ensures context.user exists
             if (!context.user) {

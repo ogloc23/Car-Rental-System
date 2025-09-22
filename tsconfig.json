@@ -4,7 +4,7 @@
     "rootDir": ".",                
     "outDir": "./dist",            
     "target": "ESNext",            
-    "module": "NodeNext",           // Change to "ESNext" for better compatibility with ES modules
+    "module": "NodeNext",           
     "moduleResolution": "NodeNext",    
     "esModuleInterop": true,       
     "skipLibCheck": true,          

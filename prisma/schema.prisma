@@ -27,6 +27,7 @@ model User {
   bookings     Booking[]
   payments     Payment[]
   activityLogs ActivityLog[] // ✅ Add this line to establish the relation
+  purchases    Purchase[]    // 🛒 Add this line for the Purchase relation
 }
 
 model Car {
@@ -46,6 +47,7 @@ model Car {
 
   // Relationships
   bookings Booking[]
+  purchases Purchase[] // Add this line for the opposite relation
 
   @@index([make, model])
 }
@@ -103,6 +105,7 @@ enum CarStatus {
   AVAILABLE
   RENTED
   MAINTENANCE
+  SOLD
 }
 
 // 📅 Booking lifecycle status
@@ -121,4 +124,36 @@ model ActivityLog {
   resourceId   String? // Optional: ID of the affected resource
   createdAt    DateTime @default(now())
   user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+enum ListingType {
+  RENT
+  SALE
+  BOTH
+}
+
+enum PurchaseStatus {
+  PENDING
+  CONFIRMED
+  CANCELED
+  COMPLETED
+}
+
+model Purchase {
+  id          String          @id @default(uuid())
+  userId      String
+  carId       String
+  fullName    String
+  email       String
+  phoneNumber String
+  price       Decimal         @db.Decimal(10, 2)
+  status      PurchaseStatus  @default(PENDING)
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  // Relationships
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  car  Car  @relation(fields: [carId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status])
 }
