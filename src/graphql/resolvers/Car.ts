@@ -130,65 +130,103 @@ export const carResolvers = {
       }
     },
 
-    buyCar: async ( _parent: unknown, {
-      carId, fullName, phoneNumber, email,
-    }: { 
-      carId: string, fullName: string, 
-      phoneNumber: string, email: string },
-    context: Context
+    buyCar: async (
+      _parent: unknown,
+      {
+        carId, 
+        fullName, 
+        phoneNumber, 
+        email,
+      }: {
+        carId: string;
+        fullName: string;
+        phoneNumber: string;
+        email: string;
+      },
+      context: Context
     ): Promise<Purchase> => {
       if (!context.user) {
-        throw new GraphQLError("You must be logged in to purchase a car.", {
-          extensions: { code: "UNAUTHORIZED"},
+        throw new GraphQLError("You must be logged in to purchase a ccar.", {
+          extensions: {code: "UNAUTHORIZED"},
         });
       }
+
       try {
-        const car = await prisma.car.findUnique({
-          where: {
-            id: carId
+        return await prisma.$transaction(async (tx) => {
+
+          //1: Fetch the car
+          let car = await tx.car.findUnique({
+            where: {
+              id: carId
+            }
+          });
+          if (!car) {
+            throw new GraphQLError("Car not found",{
+              extensions: { code: "NOT_FOUND"},
+            });
           }
+
+          // 2. If the car is SOLD but there are no purchases, reset it
+          if (car.carStatus === CarStatus.SOLD) {
+            const existingPurchases = await tx.purchase.findMany({
+              where: { carId },
+            });
+
+            if (existingPurchases.length === 0) {
+              car = await tx.car.update({
+                where: {id: carId},
+                data: {
+                  carStatus: CarStatus.AVAILABLE, availability: true
+                },
+              });
+            }
+          }
+
+          // 3. Block purchase if stil not available
+          if (car.carStatus !== CarStatus.AVAILABLE){
+            throw new GraphQLError("Car is not available for purchase.", {
+              extensions: {code: "BAD REQUEST"},
+            });
+          }
+
+          // 4. Crate the purchase
+          const purchase = await tx.purchase.create({
+            data: {
+              userId: context.user!.id,
+              carId,
+              fullName,
+              phoneNumber,
+              email,
+              price: car.price,
+            },
+            include: { car: true },
+          });
+
+          // 5. Update the car to SOLD
+          await tx.car.update({
+            where: {id: carId},
+            data: {carStatus: CarStatus.SOLD, availability: false},
+          });
+
+          return purchase;
         });
-        if (!car) throw new GraphQLError("Car not found", {
-          extensions: { code: "NOT FOUND"}
-        });
-        if (car.carStatus != "AVAILABLE") {
-          throw new GraphQLError("Car is not available for purchase.", {
-            extensions: { code: "BAD_REQUEST"},
+      } catch (error: any) {
+        console.error("Error buying car:", error);
+
+        if(error.code === "P2002") {
+          throw new GraphQLError("You already have a purchase for this car.", {
+            extensions: { code: "CONFLICT" },
           });
         }
+        if (error instanceof GraphQLError) {
+          throw error;
+        }
 
-        // Create the purchase
-        const purchase = await prisma.purchase.create({
-          data: {
-            userId: context.user.id,
-            carId,
-            fullName,
-            phoneNumber,
-            email,
-            price: car.price,
-            // createdAt: new Date()
-          },
-          include: {
-            car: true
-          },
-        });
-
-        //Mark the car as SOLD
-        await prisma.car.update({
-          where: { id: carId},
-          data: {
-            carStatus: CarStatus.SOLD, 
-            availability: false
-          },
-        });
-        return purchase;
-      } catch (error) {
-        console.error("Error buying car:", error);
-        throw new GraphQLError("Failed to buy car. Please try again.",{
-          extensions: { code: "INTERNAL_SERVER_ERROR"}
+        throw new GraphQLError("Unexpected error while processing purchase.", {
+          extensions: { code: "INTERNAL_SERVER_ERROR" },
         });
       }
-    },  
+    },
 
     approvePurchase: async (_parent: unknown,
       {purchaseId}: { purchaseId: string },
@@ -236,6 +274,8 @@ export const carResolvers = {
         });
         return approvePurchase;
       });
+
+      return result;
     },
 
     rejectPurchase: async (_parent: unknown,

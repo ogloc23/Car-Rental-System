@@ -4,7 +4,18 @@ export const carTypeDefs = gql `
     AVAILABLE
     RENTED
     MAINTENANCE  # Updated to match Prisma
+    SOLD
   }
+
+  enum PurchaseStatus {
+    PENDING
+    CANCELED
+    COMPLETED
+    CONFIRMED  # Updated to match Prisma
+  }
+
+
+
 
   type Car {
     id: ID!
@@ -36,6 +47,7 @@ export const carTypeDefs = gql `
   type Query {
     getCars: [Car!]!
     getCar(id: ID!): Car  # Kept nullable since resolver can throw NOT_FOUND
+    purchases(status: PurchaseStatus): [Purchase!]!
   }
 
   type Mutation {
@@ -74,5 +86,8 @@ export const carTypeDefs = gql `
       phoneNumber: String!
       email: String!
     ): Purchase!
+
+    approvePurchase(purchaseId: ID!): Purchase!
+    rejectPurchase(purchaseId: ID!): Purchase!
   }
 `;

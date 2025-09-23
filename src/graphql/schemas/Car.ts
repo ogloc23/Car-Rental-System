@@ -5,7 +5,18 @@ export const carTypeDefs = gql`
     AVAILABLE
     RENTED
     MAINTENANCE  # Updated to match Prisma
+    SOLD
   }
+
+  enum PurchaseStatus {
+    PENDING
+    CANCELED
+    COMPLETED
+    CONFIRMED  # Updated to match Prisma
+  }
+
+
+
 
   type Car {
     id: ID!
@@ -37,7 +48,7 @@ export const carTypeDefs = gql`
   type Query {
     getCars: [Car!]!
     getCar(id: ID!): Car  # Kept nullable since resolver can throw NOT_FOUND
-    purchases(status: purchaseStatus): [Purchase!]!
+    purchases(status: PurchaseStatus): [Purchase!]!
   }
 
   type Mutation {
