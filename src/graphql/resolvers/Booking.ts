@@ -124,11 +124,14 @@ export const bookingResolvers = {
         throw new GraphQLError("Unauthorized", { extensions: { code: "UNAUTHORIZED" } });
       }
 
-      const car = await context.prisma.car.findUnique({ where: { id: carId } });
+      const car = await context.prisma.car.findUnique({ 
+        where: { id: carId },
+        include: { group: true }  // Include group to access group-level pricing if needed
+      });
       if (!car) {
         throw new GraphQLError("Car not found", { extensions: { code: "NOT_FOUND" } });
       }
-      if (!car.availability) {
+      if (!car.group.available) {
         throw new GraphQLError("Car is not available for booking", { extensions: { code: "BAD_REQUEST" } });
       }
 
@@ -158,7 +161,7 @@ export const bookingResolvers = {
       }
 
       const days = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
-      const totalPrice = Number(car.price) * days;
+      const totalPrice = Number(car.group.price) * days;
 
       const booking = await context.prisma.booking.create({
         data: {
@@ -178,7 +181,7 @@ export const bookingResolvers = {
       });
 
       // Log the action
-      await logActivity(context.user.id, `Created booking for car: ${car.make} ${car.model}`, "Booking", booking.id);
+      await logActivity(context.user.id, `Created booking for car: ${car.group.make} ${car.group.model}`, "Booking", booking.id);
 
       await sendNotification(context.user.id, `Your booking is pending confirmation.`);
 

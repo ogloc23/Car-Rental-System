@@ -9,7 +9,7 @@ import { context } from './src/graphql/context.js';
 import paymentRoutes from './src/routes/paymentRoute.js';
 import webhookRoutes from './src/routes/webhookRoute.js';
 import { PrismaClient } from '@prisma/client';
-import { ApolloServerPluginLandingPageGraphQLPlayground } from 'apollo-server-core';
+import { ApolloServerPluginLandingPageGraphQLPlayground, Context } from 'apollo-server-core';
 
 dotenv.config();
 
@@ -27,7 +27,7 @@ const mergedTypeDefs = mergeTypeDefs(typeDefs);
 
 const schema = makeExecutableSchema({ typeDefs: mergedTypeDefs, resolvers });
 
-const server = new ApolloServer({
+const server = new ApolloServer<Context>({
   schema,
   context,
   introspection: true,

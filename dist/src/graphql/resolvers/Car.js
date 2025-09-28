@@ -36,6 +36,21 @@ export const carResolvers = {
                 throw new GraphQLError("Failed to fetch car.", { extensions: { code: "INTERNAL_SERVER_ERROR" } });
             }
         },
+        getAvailableCarGroups: async () => {
+            try {
+                return await prisma.carGroup.findMany({
+                    where: { available: true, count: { gt: 0 } },
+                    include: { cars: true },
+                    orderBy: { createdAt: "desc" },
+                });
+            }
+            catch (error) {
+                console.error("Error fetching available car groups:", error);
+                throw new GraphQLError("Failed to fetch available car groups.", {
+                    extensions: { code: "INTERNAL_SERVER_ERROR" },
+                });
+            }
+        },
         purchases: async (_parent, { status }, context) => {
             await adminOrStaffMiddleware(context);
             return await context.prisma.purchase.findMany({
@@ -52,8 +67,7 @@ export const carResolvers = {
     },
     Mutation: {
         addCar: async (_parent, { make, model, year, licensePlate, type, price, availability, carStatus, imageUrl, description, }, context) => {
-            await adminOrStaffMiddleware(context); // Ensures context.user exists
-            // Type guard for TypeScript (though middleware guarantees context.user)
+            await adminOrStaffMiddleware(context);
             if (!context.user) {
                 throw new GraphQLError("Unexpected error: User not authenticated after middleware.", {
                     extensions: { code: "INTERNAL_SERVER_ERROR" },
@@ -66,20 +80,53 @@ export const carResolvers = {
                         extensions: { code: "BAD_REQUEST" },
                     });
                 }
-                const carData = {
-                    make,
-                    model,
-                    year,
-                    licensePlate,
-                    type,
-                    price,
-                    availability,
-                    carStatus: CarStatus[carStatus],
-                    imageUrl: imageUrl ?? null,
-                    description,
-                };
-                const car = await prisma.car.create({ data: carData });
-                // Log the action
+                // 1. Check if CarGroup already exists
+                let carGroup = await prisma.carGroup.findFirst({
+                    where: {
+                        make,
+                        model,
+                        year,
+                        type,
+                    },
+                });
+                if (carGroup) {
+                    // 2. Increment count if group exists
+                    carGroup = await prisma.carGroup.update({
+                        where: { id: carGroup.id },
+                        data: {
+                            count: { increment: 1 },
+                            available: true,
+                        },
+                    });
+                }
+                else {
+                    // 3. Create a new group if it doesn’t exist
+                    carGroup = await prisma.carGroup.create({
+                        data: {
+                            make,
+                            model,
+                            year,
+                            type,
+                            price,
+                            count: 1,
+                            available: true,
+                        },
+                    });
+                }
+                // 4. Create the new Car tied to the group
+                const car = await prisma.car.create({
+                    data: {
+                        licensePlate,
+                        description,
+                        imageUrl: imageUrl ?? null,
+                        carStatus: CarStatus[carStatus],
+                        groupId: carGroup.id,
+                    },
+                    include: {
+                        group: { include: { cars: true } },
+                    }
+                });
+                // 5. Log the action
                 await logActivity(context.user.id, `Added car: ${make} ${model}`, "Car", car.id);
                 return car;
             }
@@ -91,60 +138,86 @@ export const carResolvers = {
             }
         },
         buyCar: async (_parent, { carId, fullName, phoneNumber, email, }, context) => {
-            if (!context.user) {
-                throw new GraphQLError("You must be logged in to purchase a ccar.", {
-                    extensions: { code: "UNAUTHORIZED" },
-                });
-            }
             try {
                 return await prisma.$transaction(async (tx) => {
-                    //1: Fetch the car
+                    // 1. Fetch the car + its group
                     let car = await tx.car.findUnique({
-                        where: {
-                            id: carId
-                        }
+                        where: { id: carId },
+                        include: { group: true },
                     });
                     if (!car) {
-                        throw new GraphQLError("Car not found", {
-                            extensions: { code: "NOT_FOUND" },
-                        });
+                        throw new GraphQLError("Car not found", { extensions: { code: "NOT_FOUND" } });
                     }
-                    // 2. If the car is SOLD but there are no purchases, reset it
-                    if (car.carStatus === CarStatus.SOLD) {
-                        const existingPurchases = await tx.purchase.findMany({
-                            where: { carId },
-                        });
-                        if (existingPurchases.length === 0) {
-                            car = await tx.car.update({
-                                where: { id: carId },
-                                data: {
-                                    carStatus: CarStatus.AVAILABLE, availability: true
-                                },
-                            });
-                        }
-                    }
-                    // 3. Block purchase if stil not available
+                    // 2. Ensure car is AVAILABLE
                     if (car.carStatus !== CarStatus.AVAILABLE) {
                         throw new GraphQLError("Car is not available for purchase.", {
-                            extensions: { code: "BAD REQUEST" },
+                            extensions: { code: "BAD_REQUEST" },
                         });
                     }
-                    // 4. Crate the purchase
+                    // 3. Determine buyer details
+                    let buyerFullName;
+                    let buyerEmail;
+                    let buyerPhone;
+                    let userId = null;
+                    if (context.user) {
+                        const dbUser = await tx.user.findUnique({
+                            where: { id: context.user.id },
+                            select: { id: true, fullName: true, email: true, phoneNumber: true },
+                        });
+                        if (!dbUser) {
+                            throw new GraphQLError("Authenticated user not found in database.", {
+                                extensions: { code: "NOT_FOUND" },
+                            });
+                        }
+                        userId = dbUser.id;
+                        buyerFullName = dbUser.fullName;
+                        buyerEmail = dbUser.email;
+                        buyerPhone = dbUser.phoneNumber;
+                    }
+                    else {
+                        if (!fullName || !email || !phoneNumber) {
+                            throw new GraphQLError("Guests must provide fullName, phoneNumber, and email to purchase a car.", { extensions: { code: "BAD_REQUEST" } });
+                        }
+                        // 🔍 Check for duplicate guest purchase
+                        const existingGuestPurchase = await tx.purchase.findFirst({
+                            where: {
+                                carId,
+                                OR: [{ email }, { phoneNumber }],
+                                status: { in: [PurchaseStatus.PENDING, PurchaseStatus.CONFIRMED] },
+                            },
+                        });
+                        if (existingGuestPurchase) {
+                            throw new GraphQLError("You already have a purchase for this car with the same email or phone number.", { extensions: { code: "CONFLICT" } });
+                        }
+                        buyerFullName = fullName;
+                        buyerEmail = email;
+                        buyerPhone = phoneNumber;
+                    }
+                    // 4. Create the purchase
                     const purchase = await tx.purchase.create({
                         data: {
-                            userId: context.user.id,
                             carId,
-                            fullName,
-                            phoneNumber,
-                            email,
-                            price: car.price,
+                            userId,
+                            fullName: buyerFullName,
+                            email: buyerEmail,
+                            phoneNumber: buyerPhone,
+                            price: car.group.price, // 👈 use group price
                         },
-                        include: { car: true },
+                        include: { car: true, user: true },
                     });
-                    // 5. Update the car to SOLD
+                    // 5. Mark this car as SOLD
                     await tx.car.update({
                         where: { id: carId },
-                        data: { carStatus: CarStatus.SOLD, availability: false },
+                        data: { carStatus: CarStatus.ORDERED },
+                    });
+                    // 6. Decrement group count
+                    const newCount = car.group.count--;
+                    await tx.carGroup.update({
+                        where: { id: car.groupId },
+                        data: {
+                            count: newCount,
+                            available: newCount > 0,
+                        },
                     });
                     return purchase;
                 });
@@ -156,9 +229,8 @@ export const carResolvers = {
                         extensions: { code: "CONFLICT" },
                     });
                 }
-                if (error instanceof GraphQLError) {
+                if (error instanceof GraphQLError)
                     throw error;
-                }
                 throw new GraphQLError("Unexpected error while processing purchase.", {
                     extensions: { code: "INTERNAL_SERVER_ERROR" },
                 });
@@ -188,7 +260,6 @@ export const carResolvers = {
                         car: {
                             update: {
                                 carStatus: CarStatus.SOLD,
-                                availability: false,
                             },
                         },
                     },
@@ -227,7 +298,6 @@ export const carResolvers = {
                     car: {
                         update: {
                             carStatus: CarStatus.AVAILABLE,
-                            availability: true,
                         },
                     },
                 },
@@ -242,7 +312,10 @@ export const carResolvers = {
                 });
             }
             try {
-                const existingCar = await prisma.car.findUnique({ where: { id } });
+                const existingCar = await prisma.car.findUnique({
+                    where: { id },
+                    include: { group: true } // Include group to access make/model for logging
+                });
                 if (!existingCar) {
                     throw new GraphQLError("Car not found", { extensions: { code: "NOT_FOUND" } });
                 }
@@ -257,7 +330,7 @@ export const carResolvers = {
                 });
                 // Log the action (only if status or description changes, for example)
                 if (carStatus || description) {
-                    await logActivity(context.user.id, `Updated car: ${existingCar.make} ${existingCar.model} (Status: ${carStatus || existingCar.carStatus})`, "Car", id);
+                    await logActivity(context.user.id, `Updated car: ${existingCar.group.make} ${existingCar.group.model} (Status: ${carStatus || existingCar.carStatus})`, "Car", id);
                 }
                 return updatedCar;
             }
@@ -276,13 +349,16 @@ export const carResolvers = {
                 });
             }
             try {
-                const existingCar = await prisma.car.findUnique({ where: { id } });
+                const existingCar = await prisma.car.findUnique({
+                    where: { id },
+                    include: { group: true } // Include group to access make/model for logging
+                });
                 if (!existingCar) {
                     throw new GraphQLError("Car not found", { extensions: { code: "NOT_FOUND" } });
                 }
                 const deletedCar = await prisma.car.delete({ where: { id } });
                 // Log the action
-                await logActivity(context.user.id, `Deleted car: ${existingCar.make} ${existingCar.model}`, "Car", id);
+                await logActivity(context.user.id, `Deleted car: ${existingCar.group.make} ${existingCar.group.model}`, "Car", id);
                 return deletedCar;
             }
             catch (error) {

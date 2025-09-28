@@ -1,36 +1,140 @@
+// import { gql } from "graphql-tag"; 
+// export const carTypeDefs = gql`
+//   enum CarStatus {
+//     AVAILABLE
+//     RENTED
+//     MAINTENANCE
+//     SOLD
+//   }
+//   enum PurchaseStatus {
+//     PENDING
+//     CANCELED
+//     COMPLETED
+//     CONFIRMED
+//   }
+//   type Car {
+//     id: ID!
+//     make: String!
+//     model: String!
+//     year: Int!
+//     licensePlate: String!
+//     type: String!
+//     price: Float!
+//     availability: Boolean!
+//     description: String!
+//     carStatus: CarStatus!
+//     imageUrl: String
+//     createdAt: String!
+//     updatedAt: String!
+//   }
+//   type User {
+//     id: ID!
+//     fullName: String!
+//     email: String!
+//     phoneNumber: String!
+//   }
+//   type Purchase {
+//     id: ID!
+//     fullName: String!
+//     email: String!
+//     phoneNumber: String!
+//     price: Float!
+//     status: String!
+//     createdAt: String!
+//     car: Car!
+//     user: User   # 👈 will be null for guest purchases
+//   }
+//   type Query {
+//     getCars: [Car!]!
+//     getCar(id: ID!): Car
+//     purchases(status: PurchaseStatus): [Purchase!]!
+//   }
+//   type Mutation {
+//     addCar(
+//       make: String!
+//       model: String!
+//       year: Int! 
+//       licensePlate: String!
+//       type: String!
+//       price: Float!
+//       availability: Boolean
+//       description: String!
+//       carStatus: CarStatus
+//       imageUrl: String
+//     ): Car!
+//     updateCar(
+//       id: ID!
+//       make: String
+//       model: String
+//       year: Int
+//       licensePlate: String
+//       type: String
+//       price: Float
+//       availability: Boolean
+//       description: String
+//       carStatus: CarStatus
+//       imageUrl: String
+//     ): Car!
+//     deleteCar(id: ID!): Car!
+//     buyCar(
+//       carId: ID!
+//       fullName: String   # 👈 optional now
+//       phoneNumber: String # 👈 optional now
+//       email: String       # 👈 optional now
+//     ): Purchase!
+//     approvePurchase(purchaseId: ID!): Purchase!
+//     rejectPurchase(purchaseId: ID!): Purchase!
+//   }
+// `;
 import { gql } from "graphql-tag";
 export const carTypeDefs = gql `
   enum CarStatus {
     AVAILABLE
     RENTED
-    MAINTENANCE  # Updated to match Prisma
+    MAINTENANCE
     SOLD
+    ORDERED
   }
 
   enum PurchaseStatus {
     PENDING
     CANCELED
     COMPLETED
-    CONFIRMED  # Updated to match Prisma
+    CONFIRMED
   }
 
-
-
-
-  type Car {
+  # 👇 Represents the group of identical cars (inventory level)
+  type CarGroup {
     id: ID!
     make: String!
     model: String!
     year: Int!
-    licensePlate: String!
     type: String!
     price: Float!
-    availability: Boolean!
+    count: Int!          # how many are left
+    available: Boolean!  # group availability
+    createdAt: String!
+    updatedAt: String!
+    cars: [Car!]!        # all cars in this group
+  }
+
+  # 👇 Represents an individual car
+  type Car {
+    id: ID!
+    licensePlate: String!
     description: String!
     carStatus: CarStatus!
     imageUrl: String
     createdAt: String!
     updatedAt: String!
+    group: CarGroup!     # link to its group
+  }
+
+  type User {
+    id: ID!
+    fullName: String!
+    email: String!
+    phoneNumber: String!
   }
 
   type Purchase {
@@ -42,11 +146,14 @@ export const carTypeDefs = gql `
     status: String!
     createdAt: String!
     car: Car!
+    user: User
   }
 
   type Query {
     getCars: [Car!]!
-    getCar(id: ID!): Car  # Kept nullable since resolver can throw NOT_FOUND
+    getCar(id: ID!): Car
+    getCarGroups: [CarGroup!]!   # 👈 NEW: inventory-level view
+    getAvailableCarGroups: [CarGroup!]!   # 👈 NEW
     purchases(status: PurchaseStatus): [Purchase!]!
   }
 
@@ -54,7 +161,7 @@ export const carTypeDefs = gql `
     addCar(
       make: String!
       model: String!
-      year: Int!
+      year: Int! 
       licensePlate: String!
       type: String!
       price: Float!
@@ -62,29 +169,23 @@ export const carTypeDefs = gql `
       description: String!
       carStatus: CarStatus
       imageUrl: String
-    ): Car!  # Non-nullable since resolver creates or throws
+    ): Car!
 
     updateCar(
       id: ID!
-      make: String
-      model: String
-      year: Int
       licensePlate: String
-      type: String
-      price: Float
-      availability: Boolean
       description: String
       carStatus: CarStatus
       imageUrl: String
-    ): Car!  # Non-nullable since resolver updates or throws
+    ): Car!
 
-    deleteCar(id: ID!): Car!  # Non-nullable since resolver deletes or throws
+    deleteCar(id: ID!): Car!
 
     buyCar(
       carId: ID!
-      fullName: String!
-      phoneNumber: String!
-      email: String!
+      fullName: String
+      phoneNumber: String
+      email: String
     ): Purchase!
 
     approvePurchase(purchaseId: ID!): Purchase!

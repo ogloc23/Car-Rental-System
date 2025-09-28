@@ -2,6 +2,7 @@ import { PrismaClient, Car, Prisma, CarStatus, Purchase, PurchaseStatus } from "
 import { Context } from "../../types/types.js";
 import { adminOrStaffMiddleware } from "../../middleware/adminOrStaffMiddleware.js";
 import { GraphQLError } from "graphql";
+import { context } from "../context.js";
 
 const prisma = new PrismaClient();
 
@@ -39,23 +40,39 @@ export const carResolvers = {
       }
     },
 
-    purchases: async (_parent: unknown,{
+    getAvailableCarGroups: async () => {
+      try {
+        return await prisma.carGroup.findMany({
+          where: { available: true, count: { gt: 0 } },
+          include: { cars: true },
+          orderBy: { createdAt: "desc" },
+        });
+      } catch (error) {
+        console.error("Error fetching available car groups:", error);
+        throw new GraphQLError("Failed to fetch available car groups.", {
+          extensions: { code: "INTERNAL_SERVER_ERROR" },
+        });
+      }
+    },
+
+
+    purchases: async (_parent: unknown, {
       status
-    }: {status?: PurchaseStatus }, 
-    context: Context
-  ) => {
-    await adminOrStaffMiddleware(context);
-    return await context.prisma.purchase.findMany({
-      where: status ? {
-        status
-      } : undefined,
-      orderBy: { createdAt: "desc" },
-      include: {
-        car: true,
-        user: true,
-      },
-    });
-  },
+    }: { status?: PurchaseStatus },
+      context: Context
+    ) => {
+      await adminOrStaffMiddleware(context);
+      return await context.prisma.purchase.findMany({
+        where: status ? {
+          status
+        } : undefined,
+        orderBy: { createdAt: "desc" },
+        include: {
+          car: true,
+          user: true,
+        },
+      });
+    },
   },
 
   Mutation: {
@@ -86,9 +103,8 @@ export const carResolvers = {
       },
       context: Context
     ): Promise<Car> => {
-      await adminOrStaffMiddleware(context); // Ensures context.user exists
+      await adminOrStaffMiddleware(context);
 
-      // Type guard for TypeScript (though middleware guarantees context.user)
       if (!context.user) {
         throw new GraphQLError("Unexpected error: User not authenticated after middleware.", {
           extensions: { code: "INTERNAL_SERVER_ERROR" },
@@ -103,22 +119,55 @@ export const carResolvers = {
           });
         }
 
-        const carData: Prisma.CarCreateInput = {
-          make,
-          model,
-          year,
-          licensePlate,
-          type,
-          price,
-          availability,
-          carStatus: CarStatus[carStatus as keyof typeof CarStatus],
-          imageUrl: imageUrl ?? null,
-          description,
-        };
+        // 1. Check if CarGroup already exists
+        let carGroup = await prisma.carGroup.findFirst({
+          where: {
+            make,
+            model,
+            year,
+            type,
+          },
+        });
 
-        const car = await prisma.car.create({ data: carData });
+        if (carGroup) {
+          // 2. Increment count if group exists
+          carGroup = await prisma.carGroup.update({
+            where: { id: carGroup.id },
+            data: {
+              count: { increment: 1 },
+              available: true,
+            },
+          });
+        } else {
+          // 3. Create a new group if it doesn’t exist
+          carGroup = await prisma.carGroup.create({
+            data: {
+              make,
+              model,
+              year,
+              type,
+              price,
+              count: 1,
+              available: true,
+            },
+          });
+        }
 
-        // Log the action
+        // 4. Create the new Car tied to the group
+        const car = await prisma.car.create({
+          data: {
+            licensePlate,
+            description,
+            imageUrl: imageUrl ?? null,
+            carStatus: CarStatus[carStatus as keyof typeof CarStatus],
+            groupId: carGroup.id,
+          },
+          include: {
+            group: { include: { cars: true }},
+          }
+        });
+
+        // 5. Log the action
         await logActivity(context.user.id, `Added car: ${make} ${model}`, "Car", car.id);
 
         return car;
@@ -130,82 +179,118 @@ export const carResolvers = {
       }
     },
 
+
     buyCar: async (
       _parent: unknown,
       {
-        carId, 
-        fullName, 
-        phoneNumber, 
+        carId,
+        fullName,
+        phoneNumber,
         email,
       }: {
         carId: string;
-        fullName: string;
-        phoneNumber: string;
-        email: string;
+        fullName?: string;
+        phoneNumber?: string;
+        email?: string;
       },
       context: Context
     ): Promise<Purchase> => {
-      if (!context.user) {
-        throw new GraphQLError("You must be logged in to purchase a ccar.", {
-          extensions: {code: "UNAUTHORIZED"},
-        });
-      }
-
       try {
         return await prisma.$transaction(async (tx) => {
-
-          //1: Fetch the car
+          // 1. Fetch the car + its group
           let car = await tx.car.findUnique({
-            where: {
-              id: carId
-            }
+            where: { id: carId },
+            include: { group: true },
           });
           if (!car) {
-            throw new GraphQLError("Car not found",{
-              extensions: { code: "NOT_FOUND"},
+            throw new GraphQLError("Car not found", { extensions: { code: "NOT_FOUND" } });
+          }
+
+          // 2. Ensure car is AVAILABLE
+          if (car.carStatus !== CarStatus.AVAILABLE) {
+            throw new GraphQLError("Car is not available for purchase.", {
+              extensions: { code: "BAD_REQUEST" },
             });
           }
 
-          // 2. If the car is SOLD but there are no purchases, reset it
-          if (car.carStatus === CarStatus.SOLD) {
-            const existingPurchases = await tx.purchase.findMany({
-              where: { carId },
+          // 3. Determine buyer details
+          let buyerFullName: string;
+          let buyerEmail: string;
+          let buyerPhone: string;
+          let userId: string | null = null;
+
+          if (context.user) {
+            const dbUser = await tx.user.findUnique({
+              where: { id: context.user.id },
+              select: { id: true, fullName: true, email: true, phoneNumber: true },
             });
 
-            if (existingPurchases.length === 0) {
-              car = await tx.car.update({
-                where: {id: carId},
-                data: {
-                  carStatus: CarStatus.AVAILABLE, availability: true
-                },
+            if (!dbUser) {
+              throw new GraphQLError("Authenticated user not found in database.", {
+                extensions: { code: "NOT_FOUND" },
               });
             }
-          }
 
-          // 3. Block purchase if stil not available
-          if (car.carStatus !== CarStatus.AVAILABLE){
-            throw new GraphQLError("Car is not available for purchase.", {
-              extensions: {code: "BAD REQUEST"},
+            userId = dbUser.id;
+            buyerFullName = dbUser.fullName;
+            buyerEmail = dbUser.email;
+            buyerPhone = dbUser.phoneNumber;
+          } else {
+            if (!fullName || !email || !phoneNumber) {
+              throw new GraphQLError(
+                "Guests must provide fullName, phoneNumber, and email to purchase a car.",
+                { extensions: { code: "BAD_REQUEST" } }
+              );
+            }
+
+            // 🔍 Check for duplicate guest purchase
+            const existingGuestPurchase = await tx.purchase.findFirst({
+              where: {
+                carId,
+                OR: [{ email }, { phoneNumber }],
+                status: { in: [PurchaseStatus.PENDING, PurchaseStatus.CONFIRMED] },
+              },
             });
+
+            if (existingGuestPurchase) {
+              throw new GraphQLError(
+                "You already have a purchase for this car with the same email or phone number.",
+                { extensions: { code: "CONFLICT" } }
+              );
+            }
+
+            buyerFullName = fullName;
+            buyerEmail = email;
+            buyerPhone = phoneNumber;
           }
 
-          // 4. Crate the purchase
+          // 4. Create the purchase
           const purchase = await tx.purchase.create({
             data: {
-              userId: context.user!.id,
               carId,
-              fullName,
-              phoneNumber,
-              email,
-              price: car.price,
+              userId,
+              fullName: buyerFullName,
+              email: buyerEmail,
+              phoneNumber: buyerPhone,
+              price: car.group.price, // 👈 use group price
             },
-            include: { car: true },
+            include: { car: true, user: true },
           });
 
-          // 5. Update the car to SOLD
+          // 5. Mark this car as SOLD
           await tx.car.update({
-            where: {id: carId},
-            data: {carStatus: CarStatus.SOLD, availability: false},
+            where: { id: carId },
+            data: { carStatus: CarStatus.ORDERED },
+          });
+
+          // 6. Decrement group count
+          const newCount = car.group.count--;
+          await tx.carGroup.update({
+            where: { id: car.groupId },
+            data: {
+              count: newCount,
+              available: newCount > 0,
+            },
           });
 
           return purchase;
@@ -213,14 +298,12 @@ export const carResolvers = {
       } catch (error: any) {
         console.error("Error buying car:", error);
 
-        if(error.code === "P2002") {
+        if (error.code === "P2002") {
           throw new GraphQLError("You already have a purchase for this car.", {
             extensions: { code: "CONFLICT" },
           });
         }
-        if (error instanceof GraphQLError) {
-          throw error;
-        }
+        if (error instanceof GraphQLError) throw error;
 
         throw new GraphQLError("Unexpected error while processing purchase.", {
           extensions: { code: "INTERNAL_SERVER_ERROR" },
@@ -228,8 +311,9 @@ export const carResolvers = {
       }
     },
 
+
     approvePurchase: async (_parent: unknown,
-      {purchaseId}: { purchaseId: string },
+      { purchaseId }: { purchaseId: string },
       context: Context
     ) => {
       await adminOrStaffMiddleware(context);
@@ -241,7 +325,7 @@ export const carResolvers = {
       if (!purchase) throw new GraphQLError("Purchase not found");
 
       if (purchase.status !== PurchaseStatus.PENDING) {
-        throw new GraphQLError("Only pending purchases can be approved",{
+        throw new GraphQLError("Only pending purchases can be approved", {
           extensions: { code: "BAD REQUEST" },
         });
       }
@@ -250,13 +334,12 @@ export const carResolvers = {
       const result = await context.prisma.$transaction(async (tx) => {
         //Approve the selected purchase
         const approvePurchase = await tx.purchase.update({
-          where: {id: purchaseId},
+          where: { id: purchaseId },
           data: {
             status: PurchaseStatus.CONFIRMED,
             car: {
               update: {
                 carStatus: CarStatus.SOLD,
-                availability: false,
               },
             },
           },
@@ -268,9 +351,9 @@ export const carResolvers = {
           where: {
             carId: purchase.carId,
             status: PurchaseStatus.PENDING,
-            NOT: {id: purchaseId},
+            NOT: { id: purchaseId },
           },
-          data: {status: PurchaseStatus.CANCELED},
+          data: { status: PurchaseStatus.CANCELED },
         });
         return approvePurchase;
       });
@@ -279,29 +362,28 @@ export const carResolvers = {
     },
 
     rejectPurchase: async (_parent: unknown,
-      {purchaseId}: {purchaseId: string},
+      { purchaseId }: { purchaseId: string },
       context: Context
     ) => {
       await adminOrStaffMiddleware(context);
 
       const purchase = await context.prisma.purchase.findUnique({
-        where: {id: purchaseId},
-        include: {car: true},
+        where: { id: purchaseId },
+        include: { car: true },
       });
       if (!purchase) throw new GraphQLError("Purchase not found");
       if (purchase.status !== PurchaseStatus.PENDING) {
-        throw new GraphQLError("Only pending purchases can be rejected",{
+        throw new GraphQLError("Only pending purchases can be rejected", {
           extensions: { code: "BAD REQUEST" },
         });
       }
       return await context.prisma.purchase.update({
-        where: {id: purchaseId},
+        where: { id: purchaseId },
         data: {
           status: PurchaseStatus.CANCELED,
           car: {
             update: {
               carStatus: CarStatus.AVAILABLE,
-              availability: true,
             },
           },
         },
@@ -323,7 +405,10 @@ export const carResolvers = {
       }
 
       try {
-        const existingCar = await prisma.car.findUnique({ where: { id } });
+        const existingCar = await prisma.car.findUnique({ 
+          where: { id },
+          include: { group: true }  // Include group to access make/model for logging
+        });
         if (!existingCar) {
           throw new GraphQLError("Car not found", { extensions: { code: "NOT_FOUND" } });
         }
@@ -342,7 +427,7 @@ export const carResolvers = {
         if (carStatus || description) {
           await logActivity(
             context.user.id,
-            `Updated car: ${existingCar.make} ${existingCar.model} (Status: ${carStatus || existingCar.carStatus})`,
+            `Updated car: ${existingCar.group.make} ${existingCar.group.model} (Status: ${carStatus || existingCar.carStatus})`,
             "Car",
             id
           );
@@ -367,7 +452,10 @@ export const carResolvers = {
       }
 
       try {
-        const existingCar = await prisma.car.findUnique({ where: { id } });
+        const existingCar = await prisma.car.findUnique({ 
+          where: { id },
+          include: { group: true }  // Include group to access make/model for logging
+        });
         if (!existingCar) {
           throw new GraphQLError("Car not found", { extensions: { code: "NOT_FOUND" } });
         }
@@ -375,7 +463,7 @@ export const carResolvers = {
         const deletedCar = await prisma.car.delete({ where: { id } });
 
         // Log the action
-        await logActivity(context.user.id, `Deleted car: ${existingCar.make} ${existingCar.model}`, "Car", id);
+        await logActivity(context.user.id, `Deleted car: ${existingCar.group.make} ${existingCar.group.model}`, "Car", id);
 
         return deletedCar;
       } catch (error) {
