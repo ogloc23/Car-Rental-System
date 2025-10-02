@@ -22,7 +22,11 @@ export const carResolvers = {
   Query: {
     getCars: async (): Promise<Car[]> => {
       try {
-        return await prisma.car.findMany();
+        return await prisma.car.findMany({
+          include: {
+            group: true
+          }
+        });
       } catch (error) {
         console.error("Error fetching cars:", error);
         throw new GraphQLError("Failed to fetch cars.", { extensions: { code: "INTERNAL_SERVER_ERROR" } });
@@ -31,7 +35,12 @@ export const carResolvers = {
 
     getCar: async (_parent: unknown, { id }: { id: string }): Promise<Car> => {
       try {
-        const car = await prisma.car.findUnique({ where: { id } });
+        const car = await prisma.car.findUnique({
+          where: { id },
+          include: {
+            group: true
+          }
+        });
         if (!car) throw new GraphQLError("Car not found", { extensions: { code: "NOT_FOUND" } });
         return car;
       } catch (error) {
@@ -156,6 +165,11 @@ export const carResolvers = {
         // 4. Create the new Car tied to the group
         const car = await prisma.car.create({
           data: {
+            make,
+            model,
+            year,
+            type,
+            price,
             licensePlate,
             description,
             imageUrl: imageUrl ?? null,
@@ -163,7 +177,7 @@ export const carResolvers = {
             groupId: carGroup.id,
           },
           include: {
-            group: { include: { cars: true }},
+            group: { include: { cars: true } },
           }
         });
 
@@ -405,7 +419,7 @@ export const carResolvers = {
       }
 
       try {
-        const existingCar = await prisma.car.findUnique({ 
+        const existingCar = await prisma.car.findUnique({
           where: { id },
           include: { group: true }  // Include group to access make/model for logging
         });
@@ -452,7 +466,7 @@ export const carResolvers = {
       }
 
       try {
-        const existingCar = await prisma.car.findUnique({ 
+        const existingCar = await prisma.car.findUnique({
           where: { id },
           include: { group: true }  // Include group to access make/model for logging
         });

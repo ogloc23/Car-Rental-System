@@ -137,6 +137,11 @@ export const carTypeDefs = gql`
     id: ID!
     licensePlate: String!
     description: String!
+    make: String!       
+    model: String!
+    year: Int!
+    type: String!
+    price: Float!
     carStatus: CarStatus!
     imageUrl: String
     createdAt: String!

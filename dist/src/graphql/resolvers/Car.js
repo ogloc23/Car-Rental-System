@@ -17,7 +17,11 @@ export const carResolvers = {
     Query: {
         getCars: async () => {
             try {
-                return await prisma.car.findMany();
+                return await prisma.car.findMany({
+                    include: {
+                        group: true
+                    }
+                });
             }
             catch (error) {
                 console.error("Error fetching cars:", error);
@@ -26,7 +30,12 @@ export const carResolvers = {
         },
         getCar: async (_parent, { id }) => {
             try {
-                const car = await prisma.car.findUnique({ where: { id } });
+                const car = await prisma.car.findUnique({
+                    where: { id },
+                    include: {
+                        group: true
+                    }
+                });
                 if (!car)
                     throw new GraphQLError("Car not found", { extensions: { code: "NOT_FOUND" } });
                 return car;
@@ -116,6 +125,11 @@ export const carResolvers = {
                 // 4. Create the new Car tied to the group
                 const car = await prisma.car.create({
                     data: {
+                        make,
+                        model,
+                        year,
+                        type,
+                        price,
                         licensePlate,
                         description,
                         imageUrl: imageUrl ?? null,
