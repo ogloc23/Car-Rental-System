@@ -1,7 +1,8 @@
 node_modules
 .env
 testConnection.ts
-
+prisma.config.ts
+prisma.d.ts
 
 1️⃣ Email Verification
 2️⃣ Auto Logout (1hr inactivity)

@@ -15,7 +15,9 @@ const purple = '\x1b[35m';
 const reset = '\x1b[0m';
 const prisma = new PrismaClient();
 const app = express();
-app.use(cors({ origin: process.env.CORS_ORIGIN || '*' }));
+app.use(cors({ origin: process.env.CORS_ORIGIN || 'https://rentals-admin.vercel.app',
+    credentials: true,
+}));
 app.use(express.json());
 app.use('/payment/callback', paymentRoutes);
 app.use('/payment/webhook', webhookRoutes);
@@ -43,7 +45,7 @@ async function startServer() {
         console.log(`${purple}⏳ Connecting to database...${reset}`);
         await prisma.$connect();
         await server.start();
-        server.applyMiddleware({ app, path: '/graphql' });
+        server.applyMiddleware({ app, path: '/graphql', cors: false });
         const timestamp = new Date().toLocaleString();
         console.log(`${purple}✅ Connected to database at: ${timestamp}${reset}`);
         const PORT = process.env.PORT || 4000;
