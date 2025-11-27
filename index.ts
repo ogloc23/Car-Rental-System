@@ -18,7 +18,9 @@ const reset = '\x1b[0m';
 
 const prisma = new PrismaClient();
 const app = express();
-app.use(cors({ origin: process.env.CORS_ORIGIN || 'https://rentals-admin.vercel.app',
+app.use(cors({ origin: [ 
+  process.env.CORS_ORIGIN || 'https://rentals-admin.vercel.app', 'http://localhost:3001', "*"
+],
   credentials: true,
  }));
 app.use(express.json());
